@@ -15,6 +15,9 @@ import { RangeTabs, resolveRange, rangeCutoff } from '@/components/range-tabs';
 import { MarkAllViewedButton } from '@/components/mark-all-viewed-button';
 import { SortableHead } from '@/components/sortable-head';
 import { resolveSort, sortHref, type SortDir } from '@/lib/table-sort';
+import { Pagination } from '@/components/pagination';
+
+const PAGE_SIZE = 50;
 
 const SORT_COLUMNS = ['when', 'duration', 'pages', 'country', 'browser', 'errors'] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -40,10 +43,10 @@ function fmtDuration(ms: number | null) {
 
 export default async function SessionsPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ user?: string; range?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ user?: string; range?: string; sort?: string; dir?: string; page?: string }>;
 }) {
   const { id } = await props.params;
-  const { user, range: rangeParam, sort: sortParam, dir: dirParam } = await props.searchParams;
+  const { user, range: rangeParam, sort: sortParam, dir: dirParam, page: pageParam } = await props.searchParams;
   const session = await readSessionCookie();
   if (!session) redirect('/login');
   const [project] = await db.select().from(schema.projects)
@@ -79,13 +82,22 @@ export default async function SessionsPage(props: {
       )),
   );
 
-  const [rows, [{ value: total }], [{ value: unviewed }]] = await Promise.all([
-    db.select().from(schema.sessions).where(where).orderBy(orderExpr).limit(50),
+  // total/unviewed don't depend on the page, so resolve them first —
+  // total tells us how many pages exist, which clamps an out-of-range
+  // ?page= (e.g. left over after a filter change shrank the result set)
+  // to the last valid page instead of silently rendering empty.
+  const [[{ value: total }], [{ value: unviewed }]] = await Promise.all([
     db.select({ value: count() }).from(schema.sessions).where(where),
     // Count unviewed sessions in the SAME filter so the badge matches
     // what's visible — e.g. "8 unviewed in the last 24h", not project-wide.
     db.select({ value: count() }).from(schema.sessions).where(and(where, unviewedByMe)!),
   ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const requestedPage = Math.max(1, parseInt(pageParam ?? '1', 10) || 1);
+  const currentPage = Math.min(requestedPage, totalPages);
+
+  const rows = await db.select().from(schema.sessions).where(where).orderBy(orderExpr)
+    .limit(PAGE_SIZE).offset((currentPage - 1) * PAGE_SIZE);
 
   // Which of the rows shown has the current admin already viewed?
   const viewedByMe = await viewedSessionIds(rows.map((r) => r.id), session.email);
@@ -191,6 +203,13 @@ export default async function SessionsPage(props: {
           </TableBody>
         </Table>
       </Card>
+
+      <Pagination
+        basePath={basePath}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        extraParams={{ user, range: rangeParam, sort: sortParam, dir: dirParam }}
+      />
     </main>
   );
 }
