@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "is_signed_up" boolean DEFAULT false NOT NULL;

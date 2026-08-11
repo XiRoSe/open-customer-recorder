@@ -1,0 +1,79 @@
+{
+  "name": "open-customer-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Matan Avitan",
+  "homepage": "https://github.com/XiRoSe/open-customer-recorder#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XiRoSe/open-customer-recorder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/XiRoSe/open-customer-recorder/issues"
+  },
+  "keywords": [
+    "session-replay",
+    "rrweb",
+    "self-hosted",
+    "analytics",
+    "session-recording",
+    "openreplay-alternative",
+    "fullstory-alternative",
+    "nextjs"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "npm run build:tracker && next build",
+    "build:tracker": "node scripts/build-tracker.mjs",
+    "start": "next start",
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.4.1",
+    "@rrweb/types": "^2.0.0-alpha.20",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.14.0",
+    "nanoid": "^5.1.11",
+    "next": "16.2.6",
+    "next-themes": "^0.4.6",
+    "playwright-core": "1.60.0",
+    "postgres": "^3.4.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "rrweb": "^2.0.0-alpha.20",
+    "rrweb-player": "^2.0.0-alpha.20",
+    "shadcn": "^4.7.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "ua-parser-js": "^2.0.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20.19.40",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/ua-parser-js": "^0.7.39",
+    "@vitest/ui": "^4.1.5",
+    "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.1.5"
+  }
+}

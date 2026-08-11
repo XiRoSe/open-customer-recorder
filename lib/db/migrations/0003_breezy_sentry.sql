@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "viewed_at" timestamp with time zone;

@@ -1,0 +1,1 @@
+ALTER TABLE "tag_rules" ADD COLUMN "color" text DEFAULT 'green' NOT NULL;

@@ -1,0 +1,7 @@
+.git
+.next
+node_modules
+.playwright-mcp
+playwright-report
+test-results
+*.log

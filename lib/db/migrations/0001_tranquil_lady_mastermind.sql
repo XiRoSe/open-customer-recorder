@@ -1,0 +1,2 @@
+ALTER TABLE "sessions" ADD COLUMN "last_activity_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE INDEX "sessions_last_activity_idx" ON "sessions" USING btree ("project_id","anon_id","last_activity_at");
