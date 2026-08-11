@@ -2,36 +2,62 @@
 
 **Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.**
 
-Open Customer Recorder captures real user sessions on your website with
-[rrweb](https://github.com/rrweb-io/rrweb), stores them in your own Postgres,
-and lets you replay them from a built-in admin dashboard. It's a single Next.js
-app — the ingest API and the dashboard ship together — so it's cheap to run and
-easy to own end to end.
+Captures real user sessions with [rrweb](https://github.com/rrweb-io/rrweb), stores them in your own Postgres, and replays them from a built-in admin dashboard. One Next.js app — ingest API and dashboard ship together, so it's cheap to run and you own the data end to end.
 
 ![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)
+**License:** [PolyForm Noncommercial 1.0.0](LICENSE) — free for personal/educational/noncommercial use; commercial use needs a separate license from the author.
+**Privacy:** you're responsible for complying with GDPR/CCPA/etc. — use the [masking options](#privacy-modes) and disclose recording in your privacy policy.
 
-> ⚖️ **License: noncommercial use only.** This project is licensed under the
-> [PolyForm Noncommercial License 1.0.0](LICENSE) — free to use, modify, and
-> self-host for personal, educational, or other noncommercial purposes.
-> Commercial use requires a separate license from the author. See
-> [LICENSE](LICENSE) for the exact terms.
+---
 
-> ⚠️ **Privacy & consent are your responsibility.** Session replay records what
-> users do on your pages. Make sure your usage complies with the laws that apply
-> to you (GDPR, CCPA, etc.), use the masking options below, and disclose
-> recording in your privacy policy.
+## Quick start
+
+**Prerequisites:** Node.js 20+, a Postgres database.
+
+```bash
+git clone https://github.com/XiRoSe/open-customer-recorder.git
+cd open-customer-recorder
+npm install
+cp .env.example .env.local        # edit the values
+npm run db:migrate                # apply schema to your Postgres
+npm run dev
+```
+
+Open <http://localhost:3000>, log in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+you set in `.env.local`. A default org/project is created on first boot —
+copy its **project key** from the dashboard for the next step.
+
+## Record sessions on your site
+
+Drop one script tag on the pages you want to record:
+
+```html
+<script
+  src="https://your-recorder.example.com/tracker.js"
+  data-project-key="umsk_xxxxxxxxxxxxxxxxxxxx"
+  data-privacy-mode="mask_all_inputs"
+></script>
+```
+
+| Attribute | Description |
+| --- | --- |
+| `data-project-key` | **Required.** Your project key, from the dashboard. |
+| `data-api-origin` | Recorder origin to send events to (defaults to the script's own origin). |
+| `data-privacy-mode` | `default`, `mask_all_inputs`, or `strict` — see [Privacy modes](#privacy-modes). |
+
+That's it — sessions start showing up in the dashboard. `window.MegaRecorder`
+is exposed for manual `identify()` / `stop()` calls (see
+[`lib/tracker.ts`](lib/tracker.ts)); in a bundled app you can `import { initRecorder } from './lib/tracker'` directly instead of the script tag.
 
 ---
 
 ## Screenshots
 
-**Sessions list** — recent sessions with duration, pages, country, browser, and
-per-admin unviewed indicators.
+**Sessions list** — recent sessions with duration, pages, country, browser, and per-admin unviewed indicators.
 
 ![Sessions list](docs/screenshots/sessions-list.png)
 
-**Session replay** — scrub through a recorded session with speed controls,
-skip-inactive, and one-click MP4 export.
+**Session replay** — scrub through a recorded session with speed controls, skip-inactive, and one-click MP4 export.
 
 ![Session replay](docs/screenshots/session-replay.png)
 
@@ -39,20 +65,18 @@ skip-inactive, and one-click MP4 export.
 
 ![Users list](docs/screenshots/users-list.png)
 
----
-
 ## Features
 
-- 🎥 **Full session replay** powered by rrweb (DOM mutations, input, scroll, clicks), with a live URL bar that follows the visitor across page loads and SPA route changes.
-- 🗄️ **Bring your own Postgres** — events are gzipped and stored inline; no extra object store or volume required.
+- 🎥 **Full session replay** via rrweb, with a live URL bar that follows the visitor across page loads and SPA route changes.
+- 🗄️ **Bring your own Postgres** — events are gzipped and stored inline, no extra object store or volume.
 - 🔒 **Privacy modes** — mask all inputs, or strict masking of any element you tag.
-- 🏷️ **Admin-editable tag rules** — tag sessions automatically by URL match (e.g. "reached /signup") or by visit count (e.g. "2nd+ session, same visitor"), each with its own color. New rules apply to existing sessions immediately, no backfill script needed.
-- 🚫 **Exclude specific visitors from recording** — stop future sessions from a given browser (e.g. your own team's QA/maintenance traffic) from ever being recorded, enforced server-side at ingest.
+- 🏷️ **Admin-editable tag rules** — auto-tag sessions by URL match (e.g. "reached /signup") or visit count (e.g. "2nd+ session, same visitor"), each with its own color. Applies to existing sessions immediately.
+- 🚫 **Exclude visitors from recording** — stop a given browser (e.g. your own team's QA traffic) from ever being recorded, enforced server-side.
 - ↕️ **Sortable session & user tables** — click any column header to reorder.
-- 👤 **Per-admin "viewed" tracking** — each admin sees which sessions *they* have watched.
-- 🎞️ **One-click MP4 export** — server-side render of a replay to mp4 (headless Chromium + ffmpeg).
-- 🧹 **Retention & session caps** — automatic pruning of old sessions/zero-event orphans, and a hard per-session duration cap enforced server-side.
-- 🐳 **Deploy anywhere** — a standard Dockerfile; migrations run automatically on boot.
+- 👤 **Per-admin "viewed" tracking** — each admin sees which sessions *they've* watched.
+- 🎞️ **One-click MP4 export** — server-side render to mp4 (headless Chromium + ffmpeg).
+- 🧹 **Retention & session caps** — auto-prunes old/zero-event sessions, hard per-session duration cap.
+- 🐳 **Deploy anywhere** — standard Dockerfile, migrations run automatically on boot.
 
 ## How it works
 
@@ -68,27 +92,7 @@ skip-inactive, and one-click MP4 export.
                                        └─────────────────────────────┘
 ```
 
-The browser tracker uses a small **wire protocol** (kept stable for drop-in
-script tags): cookie `mega_session`, storage keys `mega_anon_id` /
-`mega_session_v2`, header `x-mega-end`, mask attribute `data-mega-mask`, and the
-global `window.MegaRecorder`.
-
-## Quick start (local)
-
-**Prerequisites:** Node.js 20+, a Postgres database.
-
-```bash
-git clone https://github.com/XiRoSe/open-customer-recorder.git
-cd open-customer-recorder
-npm install
-cp .env.example .env.local        # then edit the values
-npm run db:migrate                # apply schema to your Postgres
-npm run dev
-```
-
-Open <http://localhost:3000>, click **Log in**, and sign in with the
-`ADMIN_EMAIL` / `ADMIN_PASSWORD` you set in `.env.local`. A default
-organization/project is created on first boot.
+The tracker uses a small **wire protocol** (kept stable for drop-in script tags): cookie `mega_session`, storage keys `mega_anon_id` / `mega_session_v2`, header `x-mega-end`, mask attribute `data-mega-mask`, global `window.MegaRecorder`.
 
 ## Configuration
 
@@ -103,36 +107,9 @@ organization/project is created on first boot.
 | `BLOB_DIR` | – | Directory for blob storage when not using inline DB storage. |
 | `APP_ORIGIN` | – | Public origin of the app (cookies etc). |
 
-\* Provide **either** `ADMIN_EMAIL`+`ADMIN_PASSWORD` **or** `ADMINS_CREDS`.
+\* Provide **either** `ADMIN_EMAIL`+`ADMIN_PASSWORD` **or** `ADMINS_CREDS`. Generate strong secrets with `openssl rand -base64 32`.
 
-Generate strong secrets with `openssl rand -base64 32`.
-
-## Add the tracker to your site
-
-Each project has a **project key** (visible in the dashboard). Drop one script
-tag on the pages you want to record:
-
-```html
-<script
-  src="https://your-recorder.example.com/tracker.js"
-  data-project-key="umsk_xxxxxxxxxxxxxxxxxxxx"
-  data-privacy-mode="mask_all_inputs"
-></script>
-```
-
-Script-tag options (all via `data-*`):
-
-| Attribute | Description |
-| --- | --- |
-| `data-project-key` | **Required.** Your project key. |
-| `data-api-origin` | Recorder origin to send events to (defaults to the script's own origin). |
-| `data-privacy-mode` | `default`, `mask_all_inputs`, or `strict`. |
-
-`window.MegaRecorder` is exposed for manual `identify()` / `stop()` calls — see
-[`lib/tracker.ts`](lib/tracker.ts) for the exact API. In a bundled app you can
-also `import { initRecorder } from './lib/tracker'` directly.
-
-### Privacy modes
+## Privacy modes
 
 | Mode | Behavior |
 | --- | --- |
@@ -142,21 +119,15 @@ also `import { initRecorder } from './lib/tracker'` directly.
 
 ## Deployment
 
-The repo ships a production `Dockerfile`. The container's start command runs
-database migrations and then the server:
+The repo ships a production `Dockerfile`. The container's start command runs migrations then the server:
 
 ```
 node scripts/migrate.mjs && node server.js
 ```
 
-So **migrations apply automatically on every deploy**, before the server starts
-serving — no separate migration step. A health check is exposed at
-`/api/health`.
+Migrations apply automatically on every deploy, before the server starts serving — no separate step. Health check at `/api/health`.
 
-### Railway
-
-A `railway.toml` is included (Dockerfile builder, `/api/health` health check,
-auto-migrate start command). Deploy with the Railway CLI:
+**Railway:** a `railway.toml` is included (Dockerfile builder, health check, auto-migrate start command).
 
 ```bash
 railway up
@@ -165,23 +136,16 @@ railway up
 ## Testing
 
 ```bash
-npm test          # unit tests (vitest)
+npm test         # unit tests (vitest) — DB-dependent tests skip unless DATABASE_URL is reachable
 npm run lint      # eslint
 npm run build     # production build + type-check
+npm run test:e2e  # Playwright
 ```
-
-Some tests are integration tests that talk to Postgres; they **skip
-automatically** unless `DATABASE_URL` points at a reachable database.
-End-to-end tests use Playwright: `npm run test:e2e`.
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and
-our [Code of Conduct](CODE_OF_CONDUCT.md). To report a security issue, see
-[SECURITY.md](SECURITY.md).
+Contributions welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: [SECURITY.md](SECURITY.md), not a public issue.
 
 ## License
 
-[PolyForm Noncommercial License 1.0.0](LICENSE) © 2026 Matan Avitan — free for
-personal, educational, and other noncommercial use. For commercial licensing,
-contact the author.
+[PolyForm Noncommercial License 1.0.0](LICENSE) © 2026 Matan Avitan — free for personal, educational, and other noncommercial use. For commercial licensing, contact the author.
