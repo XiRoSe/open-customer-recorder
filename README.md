@@ -23,6 +23,24 @@ easy to own end to end.
 
 ---
 
+## Screenshots
+
+**Sessions list** — recent sessions with duration, pages, country, browser, and
+per-admin unviewed indicators.
+
+![Sessions list](docs/screenshots/sessions-list.png)
+
+**Session replay** — scrub through a recorded session with speed controls,
+skip-inactive, and one-click MP4 export.
+
+![Session replay](docs/screenshots/session-replay.png)
+
+**Users** — sessions aggregated per visitor.
+
+![Users list](docs/screenshots/users-list.png)
+
+---
+
 ## Features
 
 - 🎥 **Full session replay** powered by rrweb (DOM mutations, input, scroll, clicks), with a live URL bar that follows the visitor across page loads and SPA route changes.
