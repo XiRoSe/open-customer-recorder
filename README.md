@@ -29,7 +29,10 @@ copy its **project key** from the dashboard for the next step.
 
 ## Record sessions on your site
 
-Drop one script tag on the pages you want to record:
+Every project you create has its own **project key** (looks like
+`umsk_xxxxxxxxxxxxxxxxxxxx`) — it's how the tracker tells your recorder
+*which* project a session belongs to. Copy it from the project's page in the
+dashboard, then drop one script tag on the pages you want to record:
 
 ```html
 <script
@@ -39,15 +42,18 @@ Drop one script tag on the pages you want to record:
 ></script>
 ```
 
-| Attribute | Description |
-| --- | --- |
-| `data-project-key` | **Required.** Your project key, from the dashboard. |
-| `data-api-origin` | Recorder origin to send events to (defaults to the script's own origin). |
-| `data-privacy-mode` | `default`, `mask_all_inputs`, or `strict` — see [Privacy modes](#privacy-modes). |
+| Attribute | Required? | What it does |
+| --- | --- | --- |
+| `src` | ✅ | Where the browser loads the tracker script from — the URL of *your own* recorder deployment (the app from Quick start), not this repo. |
+| `data-project-key` | ✅ | Which project this session gets filed under. Get it from that project's page in the dashboard. |
+| `data-privacy-mode` | – | `default`, `mask_all_inputs`, or `strict` — see [Privacy modes](#privacy-modes). Defaults to `default` (records everything, unmasked) if omitted. |
+| `data-api-origin` | – | **Advanced, rarely needed.** By default, recorded events are sent back to whatever host `src` pointed at above — so this attribute is intentionally left out of the example. Only set it if you serve `tracker.js` itself from a different host than the recorder API (e.g. a CDN in front of the static file). |
 
-That's it — sessions start showing up in the dashboard. `window.MegaRecorder`
-is exposed for manual `identify()` / `stop()` calls (see
-[`lib/tracker.ts`](lib/tracker.ts)); in a bundled app you can `import { initRecorder } from './lib/tracker'` directly instead of the script tag.
+That's it — sessions start showing up in the dashboard within a few seconds
+of a visit. `window.MegaRecorder` is exposed for manual `identify()` /
+`stop()` calls (see [`lib/tracker.ts`](lib/tracker.ts)); in a bundled app you
+can `import { initRecorder } from './lib/tracker'` directly instead of the
+script tag.
 
 ---
 
@@ -64,6 +70,10 @@ is exposed for manual `identify()` / `stop()` calls (see
 **Users** — sessions aggregated per visitor.
 
 ![Users list](docs/screenshots/users-list.png)
+
+**Tags** — admin-editable rules that auto-tag sessions by URL or visit count, each with its own color.
+
+![Tags](docs/screenshots/tags.png)
 
 ## Features
 
