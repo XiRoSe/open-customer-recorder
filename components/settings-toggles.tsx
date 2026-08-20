@@ -32,7 +32,8 @@ const FEATURES: { key: keyof AppSettings; title: string; description: string }[]
   },
 ];
 
-export function SettingsToggles({ initial }: { initial: AppSettings }) {
+export function SettingsToggles({ initial, only }: { initial: AppSettings; only?: (keyof AppSettings)[] }) {
+  const features = only ? FEATURES.filter((f) => only.includes(f.key)) : FEATURES;
   const [settings, setSettings] = useState(initial);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -50,7 +51,7 @@ export function SettingsToggles({ initial }: { initial: AppSettings }) {
 
   return (
     <Card className="divide-y p-0">
-      {FEATURES.map((f) => (
+      {features.map((f) => (
         <div key={f.key} className="flex items-center justify-between gap-6 p-4">
           <div>
             <div className="font-medium">{f.title}</div>

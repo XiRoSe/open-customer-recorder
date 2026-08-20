@@ -4,10 +4,11 @@
 // entirely in-app; a full run over hundreds of profiles is seconds of
 // math plus one short LLM call per segment.
 import { kmeans } from 'ml-kmeans';
-import { sql, and, eq, inArray } from 'drizzle-orm';
+import { sql, and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
 import { embedTexts, type EmbedFn } from './embeddings';
+import { pca2d } from './pca';
 
 export const MIN_PROFILES_TO_CLUSTER = 4;
 const MAX_K = 8;
@@ -151,13 +152,11 @@ export async function runClusteringOnce(embedFn: EmbedFn = embedTexts, fetchFn: 
       named.map((n, label) => ({ projectId, name: n.name, description: n.description, size: sizes[label] ?? 0 })),
     ).returning({ id: schema.userSegments.id });
 
-    for (let label = 0; label < result.k; label++) {
-      const memberIds = usable.filter((_, i) => result.labels[i] === label).map((p) => p.id);
-      if (memberIds.length > 0) {
-        await db.update(schema.userProfiles)
-          .set({ segmentId: inserted[label].id })
-          .where(inArray(schema.userProfiles.id, memberIds));
-      }
+    const coords = pca2d(vectors);
+    for (let i = 0; i < usable.length; i++) {
+      await db.update(schema.userProfiles)
+        .set({ segmentId: inserted[result.labels[i]].id, mapX: coords[i][0], mapY: coords[i][1] })
+        .where(eq(schema.userProfiles.id, usable[i].id));
     }
     reclustered++;
     console.log(`[segments] reclustered project ${projectId}: k=${result.k} over ${usable.length} profiles`);
@@ -173,4 +172,33 @@ export async function segmentsForProject(projectId: string): Promise<Segment[]> 
     description: schema.userSegments.description, size: schema.userSegments.size,
   }).from(schema.userSegments).where(eq(schema.userSegments.projectId, projectId));
   return rows.sort((a, b) => b.size - a.size);
+}
+
+export interface ClusterPoint {
+  visitorKey: string;
+  x: number;
+  y: number;
+  segmentId: string | null;
+  excerpt: string;
+}
+
+/** Positioned profiles for the cluster map. */
+export async function clusterMapForProject(projectId: string): Promise<ClusterPoint[]> {
+  const rows = await db.select({
+    visitorKey: schema.userProfiles.visitorKey,
+    mapX: schema.userProfiles.mapX,
+    mapY: schema.userProfiles.mapY,
+    segmentId: schema.userProfiles.segmentId,
+    profileText: schema.userProfiles.profileText,
+  }).from(schema.userProfiles)
+    .where(and(eq(schema.userProfiles.projectId, projectId), isNotNull(schema.userProfiles.mapX)));
+  return rows
+    .filter((r): r is typeof r & { mapX: number; mapY: number } => r.mapX !== null && r.mapY !== null)
+    .map((r) => ({
+      visitorKey: r.visitorKey,
+      x: r.mapX,
+      y: r.mapY,
+      segmentId: r.segmentId,
+      excerpt: (r.profileText ?? '').slice(0, 160),
+    }));
 }

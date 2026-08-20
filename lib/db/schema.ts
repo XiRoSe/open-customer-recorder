@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, boolean, bigint, index, uniqueIndex, customType, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, boolean, bigint, index, uniqueIndex, customType, jsonb, doublePrecision } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const organizations = pgTable('organizations', {
@@ -173,6 +173,10 @@ export const userProfiles = pgTable('user_profiles', {
   visitorKey: text('visitor_key').notNull(),
   profileText: text('profile_text'),
   segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
+  // 2D PCA projection of the profile embedding, set at clustering time —
+  // drives the cluster map without re-embedding on page load.
+  mapX: doublePrecision('map_x'),
+  mapY: doublePrecision('map_y'),
   sessionsSummarized: integer('sessions_summarized').notNull().default(0),
   status: text('status').notNull().default('pending'), // pending | processing | done | failed
   attempts: integer('attempts').notNull().default(0),

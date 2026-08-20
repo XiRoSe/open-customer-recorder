@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
-import { clusterVectors, representatives, silhouette, runClusteringOnce, segmentsForProject } from './user-segments';
+import { clusterVectors, representatives, silhouette, runClusteringOnce, segmentsForProject, clusterMapForProject } from './user-segments';
 
 const dbReady = await isDbAvailable();
 beforeEach(async () => {
@@ -93,6 +93,15 @@ describe.skipIf(!dbReady)('runClusteringOnce', () => {
     expect(segments.reduce((s, x) => s + x.size, 0)).toBe(6);
     const profiles = await db.select().from(schema.userProfiles);
     expect(profiles.every((p) => p.segmentId !== null)).toBe(true);
+    // Map coordinates were stored for the cluster map.
+    const points = await clusterMapForProject(project.id);
+    expect(points).toHaveLength(6);
+    for (const p of points) {
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(1);
+      expect(p.segmentId).not.toBeNull();
+      expect(p.excerpt.length).toBeGreaterThan(0);
+    }
   });
 
   it('is a no-op when profiles have not changed since the last run', async () => {
