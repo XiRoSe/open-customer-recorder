@@ -1,7 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { and, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
-import { DIGEST_VERSION, extractDigest, renderNarrative, type Insight } from './session-digest';
+import { DIGEST_VERSION, extractDigest, renderNarrative } from './session-digest';
 
 export const SUMMARY_BATCH = 50;
 // A session with no end beacon counts as over after 10 min of silence
@@ -52,12 +52,19 @@ export async function runSummarySweepOnce(): Promise<number> {
   return written;
 }
 
-/** Insight badges for the sessions list. */
-export async function insightsForSessions(ids: string[]): Promise<Map<string, Insight[]>> {
+export interface SessionSummaryPreview { intentText: string | null; narrative: string; status: string }
+
+/** Summary texts for the sessions list column. */
+export async function summariesForSessions(ids: string[]): Promise<Map<string, SessionSummaryPreview>> {
   if (ids.length === 0) return new Map();
   const rows = await db
-    .select({ sessionId: schema.sessionSummaries.sessionId, insights: schema.sessionSummaries.insights })
+    .select({
+      sessionId: schema.sessionSummaries.sessionId,
+      intentText: schema.sessionSummaries.intentText,
+      narrative: schema.sessionSummaries.narrative,
+      status: schema.sessionSummaries.status,
+    })
     .from(schema.sessionSummaries)
     .where(inArray(schema.sessionSummaries.sessionId, ids));
-  return new Map(rows.map((r) => [r.sessionId, (r.insights as Insight[]) ?? []]));
+  return new Map(rows.map((r) => [r.sessionId, { intentText: r.intentText, narrative: r.narrative, status: r.status }]));
 }

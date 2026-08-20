@@ -5,8 +5,8 @@ import { and, eq, asc, desc, count, or, gt, notExists } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { viewedSessionIds } from '@/lib/session-views';
 import { tagsForSessions } from '@/lib/session-tags';
-import { insightsForSessions } from '@/lib/session-summaries';
-import { INSIGHT_META } from '@/lib/insight-meta';
+import { summariesForSessions } from '@/lib/session-summaries';
+import { SummaryCell } from '@/components/summary-cell';
 import type { TagColor } from '@/lib/tag-colors';
 import { RefreshOnReturn } from '@/components/refresh-on-return';
 import { Card } from '@/components/ui/card';
@@ -21,26 +21,19 @@ import { Pagination } from '@/components/pagination';
 
 const PAGE_SIZE = 50;
 
-const SORT_COLUMNS = ['when', 'duration', 'pages', 'country', 'browser', 'errors'] as const;
+const SORT_COLUMNS = ['when', 'duration', 'pages', 'country', 'browser'] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
 
-const SORT_EXPR: Record<SortColumn, typeof schema.sessions.startedAt | typeof schema.sessions.durationMs | typeof schema.sessions.pageCount | typeof schema.sessions.country | typeof schema.sessions.browser | typeof schema.sessions.hasErrors> = {
+const SORT_EXPR: Record<SortColumn, typeof schema.sessions.startedAt | typeof schema.sessions.durationMs | typeof schema.sessions.pageCount | typeof schema.sessions.country | typeof schema.sessions.browser> = {
   when: schema.sessions.startedAt,
   duration: schema.sessions.durationMs,
   pages: schema.sessions.pageCount,
   country: schema.sessions.country,
   browser: schema.sessions.browser,
-  errors: schema.sessions.hasErrors,
 };
 const SORT_DEFAULT_DIR: Record<SortColumn, SortDir> = {
-  when: 'desc', duration: 'desc', pages: 'desc', country: 'asc', browser: 'asc', errors: 'desc',
+  when: 'desc', duration: 'desc', pages: 'desc', country: 'asc', browser: 'asc',
 };
-
-function dedupeInsightKinds(insights: { kind: string }[]): { kind: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const i of insights) counts.set(i.kind, (counts.get(i.kind) || 0) + 1);
-  return [...counts.entries()].map(([kind, count]) => ({ kind, count }));
-}
 
 function fmtDuration(ms: number | null) {
   if (!ms) return '—';
@@ -110,7 +103,7 @@ export default async function SessionsPage(props: {
   // Which of the rows shown has the current admin already viewed?
   const viewedByMe = await viewedSessionIds(rows.map((r) => r.id), session.email);
   const tagsBySession = await tagsForSessions(rows.map((r) => r.id));
-  const insightsBySession = await insightsForSessions(rows.map((r) => r.id));
+  const summariesBySession = await summariesForSessions(rows.map((r) => r.id));
 
   const basePath = `/projects/${id}/sessions`;
   const clearUserHref = activeRange.value === '24h' ? basePath : `${basePath}?range=${activeRange.value}`;
@@ -151,11 +144,11 @@ export default async function SessionsPage(props: {
               <SortableHead href={colHref('when')} active={sort.column === 'when'} dir={sort.dir}>When</SortableHead>
               <TableHead>User</TableHead>
               <TableHead>Tags</TableHead>
+              <TableHead>Summary</TableHead>
               <SortableHead href={colHref('duration')} active={sort.column === 'duration'} dir={sort.dir}>Duration</SortableHead>
               <SortableHead href={colHref('pages')} active={sort.column === 'pages'} dir={sort.dir}>Pages</SortableHead>
               <SortableHead href={colHref('country')} active={sort.column === 'country'} dir={sort.dir}>Country</SortableHead>
               <SortableHead href={colHref('browser')} active={sort.column === 'browser'} dir={sort.dir}>Browser</SortableHead>
-              <SortableHead href={colHref('errors')} active={sort.column === 'errors'} dir={sort.dir}>Errors</SortableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
@@ -196,21 +189,15 @@ export default async function SessionsPage(props: {
                     {(tagsBySession.get(s.id) ?? []).map((t) => (
                       <Badge key={t.id} variant={t.color as TagColor}>{t.name}</Badge>
                     ))}
-                    {dedupeInsightKinds(insightsBySession.get(s.id) ?? []).map(({ kind, count }) => {
-                      const meta = INSIGHT_META[kind] ?? { emoji: '•', label: kind };
-                      return (
-                        <Badge key={kind} variant="secondary" title={meta.label}>
-                          {meta.emoji}{count > 1 ? ` ×${count}` : ''}
-                        </Badge>
-                      );
-                    })}
                   </div>
+                </TableCell>
+                <TableCell>
+                  <SummaryCell text={summariesBySession.get(s.id)?.intentText ?? summariesBySession.get(s.id)?.narrative.replace(/\n/g, ' → ') ?? null} />
                 </TableCell>
                 <TableCell>{fmtDuration(s.durationMs)}</TableCell>
                 <TableCell>{s.pageCount}</TableCell>
                 <TableCell>{s.country || '—'}</TableCell>
                 <TableCell>{s.browser || '—'}</TableCell>
-                <TableCell>{s.hasErrors ? <Badge variant="destructive">!</Badge> : '—'}</TableCell>
                 <TableCell className="text-right">
                   <DeleteSessionButton sessionId={s.id} />
                 </TableCell>

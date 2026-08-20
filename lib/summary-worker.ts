@@ -12,15 +12,17 @@ Only state what the data supports. No markdown, no preamble, no bullet points.`;
 
 interface ClaimedRow extends Record<string, unknown> { id: string; digest: unknown; attempts: number }
 
-/** Claim the oldest due pending row. SKIP LOCKED keeps concurrent app
- * replicas from double-processing. Returns null when the queue is drained. */
+/** Claim the NEWEST due pending row. Fresh sessions get their intent
+ * summary right away; the historical backfill fills in behind them.
+ * SKIP LOCKED keeps concurrent app replicas from double-processing.
+ * Returns null when the queue is drained. */
 async function claimOne(): Promise<ClaimedRow | null> {
   const res = await db.execute<ClaimedRow>(sql`
     UPDATE ${schema.sessionSummaries} SET status = 'processing', updated_at = now()
     WHERE id = (
       SELECT id FROM ${schema.sessionSummaries}
       WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at < now())
-      ORDER BY created_at
+      ORDER BY created_at DESC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     )

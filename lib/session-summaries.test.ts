@@ -4,7 +4,7 @@ import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
-import { runSummarySweepOnce, insightsForSessions } from './session-summaries';
+import { runSummarySweepOnce, summariesForSessions } from './session-summaries';
 import { DIGEST_VERSION } from './session-digest';
 
 const dbReady = await isDbAvailable();
@@ -82,17 +82,17 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
   });
 });
 
-describe.skipIf(!dbReady)('insightsForSessions', () => {
-  it('returns insights keyed by session id', async () => {
+describe.skipIf(!dbReady)('summariesForSessions', () => {
+  it('returns intent/narrative/status keyed by session id', async () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a1', startedAt: new Date(), endedAt: new Date(), eventCount: 1, blobPath: '',
     }).returning();
     await db.insert(schema.sessionSummaries).values({
-      sessionId: s.id, digest: {}, digestVersion: DIGEST_VERSION, narrative: '',
-      insights: [{ kind: 'rage_click', at: 1, count: 3 }],
+      sessionId: s.id, digest: {}, digestVersion: DIGEST_VERSION, narrative: '0:00 Landed on /',
+      insights: [], intentText: 'Browsed the pricing page.', status: 'done',
     });
-    const m = await insightsForSessions([s.id]);
-    expect(m.get(s.id)).toEqual([{ kind: 'rage_click', at: 1, count: 3 }]);
+    const m = await summariesForSessions([s.id]);
+    expect(m.get(s.id)).toEqual({ intentText: 'Browsed the pricing page.', narrative: '0:00 Landed on /', status: 'done' });
   });
 });
