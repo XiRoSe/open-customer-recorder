@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, boolean, bigint, index, uniqueIndex, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, boolean, bigint, index, uniqueIndex, customType, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const organizations = pgTable('organizations', {
@@ -118,6 +118,28 @@ export const excludedAnonIds = pgTable('excluded_anon_ids', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   projectAnonIdx: uniqueIndex('excluded_anon_ids_project_anon_idx').on(t.projectId, t.anonId),
+}));
+
+// One row per session: deterministic digest/narrative (always present once
+// swept) + optional LLM intent text. The row doubles as the LLM work queue:
+// status/attempts/nextRetryAt drive the worker's SKIP LOCKED claim.
+// digestVersion lets the sweeper re-extract old rows when heuristics improve.
+export const sessionSummaries = pgTable('session_summaries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  sessionId: uuid('session_id').notNull().unique().references(() => sessions.id, { onDelete: 'cascade' }),
+  digest: jsonb('digest').notNull(),
+  digestVersion: integer('digest_version').notNull(),
+  narrative: text('narrative').notNull(),
+  insights: jsonb('insights').notNull(),
+  intentText: text('intent_text'),
+  status: text('status').notNull().default('pending'), // pending | processing | done | failed
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  model: text('model'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  statusIdx: index('session_summaries_status_idx').on(t.status, t.nextRetryAt),
 }));
 
 export const sessionLinks = pgTable('session_links', {
