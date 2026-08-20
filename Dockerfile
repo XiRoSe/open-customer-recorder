@@ -50,6 +50,16 @@ COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-
 # the .cjs file with content-type application/node which browsers
 # refuse to execute as JS, so we can't just <script src=cdn>.)
 COPY --from=builder /app/node_modules/rrweb-player ./node_modules/rrweb-player
+# @huggingface/transformers (visitor-segment embeddings) is external for
+# the same reason as playwright-core: onnxruntime-node's libonnxruntime.so
+# and sharp's platform binaries aren't statically traceable, so copy the
+# full packages including native libs.
+COPY --from=builder /app/node_modules/@huggingface ./node_modules/@huggingface
+COPY --from=builder /app/node_modules/onnxruntime-node ./node_modules/onnxruntime-node
+COPY --from=builder /app/node_modules/onnxruntime-common ./node_modules/onnxruntime-common
+COPY --from=builder /app/node_modules/onnxruntime-web ./node_modules/onnxruntime-web
+COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
+COPY --from=builder /app/node_modules/@img ./node_modules/@img
 
 CMD ["sh", "-c", "node scripts/migrate.mjs && node server.js"]
 
