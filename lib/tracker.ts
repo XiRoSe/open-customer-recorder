@@ -148,6 +148,13 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
     u.searchParams.set('a', anonId);
     u.searchParams.set('u', lastUrl);
     u.searchParams.set('p', String(pageCount));
+    // Traffic source. Sent on every POST for simplicity; the server only
+    // stores it when it creates the session row, so it reflects how the
+    // visit began. Additive to the wire protocol — old servers ignore it.
+    try {
+      const ref = typeof document !== 'undefined' ? document.referrer : '';
+      if (ref) u.searchParams.set('r', ref.slice(0, 512));
+    } catch {}
     return u.toString();
   }
 

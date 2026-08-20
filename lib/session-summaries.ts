@@ -20,7 +20,15 @@ export async function runSummarySweepOnce(): Promise<number> {
   if (!summariesEnabled) return 0;
   const cutoff = new Date(Date.now() - ABANDONED_AFTER_MS);
   const candidates = await db
-    .select({ id: schema.sessions.id, blobData: schema.sessions.blobData })
+    .select({
+      id: schema.sessions.id,
+      blobData: schema.sessions.blobData,
+      pageUrl: schema.sessions.pageUrl,
+      referrer: schema.sessions.referrer,
+      country: schema.sessions.country,
+      browser: schema.sessions.browser,
+      os: schema.sessions.os,
+    })
     .from(schema.sessions)
     .leftJoin(schema.sessionSummaries, eq(schema.sessionSummaries.sessionId, schema.sessions.id))
     .where(and(
@@ -36,6 +44,13 @@ export async function runSummarySweepOnce(): Promise<number> {
     try {
       const ndjson = gunzipSync(c.blobData).toString('utf8');
       const digest = extractDigest(ndjson);
+      digest.context = {
+        ...(c.pageUrl ? { entryUrl: c.pageUrl } : {}),
+        ...(c.referrer ? { referrer: c.referrer } : {}),
+        ...(c.country ? { country: c.country } : {}),
+        ...(c.browser ? { browser: c.browser } : {}),
+        ...(c.os ? { os: c.os } : {}),
+      };
       values = {
         sessionId: c.id, digest, digestVersion: DIGEST_VERSION,
         narrative: renderNarrative(digest), insights: digest.insights,
@@ -48,10 +63,18 @@ export async function runSummarySweepOnce(): Promise<number> {
         insights: [], status: 'failed',
       };
     }
+    // A digest-version bump re-extracts old rows; rows that already have
+    // an AI summary keep it (and their status) instead of re-queuing an
+    // LLM call for the whole history.
+    const { status: newStatus, ...rest } = values;
     await db.insert(schema.sessionSummaries).values(values)
       .onConflictDoUpdate({
         target: schema.sessionSummaries.sessionId,
-        set: { ...values, updatedAt: new Date() },
+        set: {
+          ...rest,
+          status: sql`CASE WHEN ${schema.sessionSummaries.intentText} IS NULL THEN ${newStatus} ELSE ${schema.sessionSummaries.status} END`,
+          updatedAt: new Date(),
+        },
       });
     written++;
   }

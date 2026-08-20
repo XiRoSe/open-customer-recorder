@@ -4,7 +4,9 @@
 // names/labels/placeholders.
 import { hrefOf, type RawEvent } from './url-timeline';
 
-export const DIGEST_VERSION = 1;
+// v2: viewport in stats + session context (entry URL, referrer, device)
+// attached by the sweep — richer input for the LLM and the details panel.
+export const DIGEST_VERSION = 2;
 
 export type Step =
   | { t: number; kind: 'nav'; url: string }
@@ -14,10 +16,16 @@ export type Step =
 
 export interface Insight { kind: string; at: number; detail?: string; count?: number }
 export interface PageStat { url: string; ms: number; maxScrollY: number }
+/** Session-row facts the sweep attaches so the LLM prompt, the profile
+ * pass, and the fine-tuning export all see the same context. */
+export interface SessionContext {
+  entryUrl?: string; referrer?: string; country?: string; browser?: string; os?: string;
+}
 export interface SessionDigest {
   steps: Step[];
   insights: Insight[];
-  stats: { durationMs: number; activeMs: number; pages: PageStat[]; clickCount: number; inputFieldCount: number };
+  stats: { durationMs: number; activeMs: number; pages: PageStat[]; clickCount: number; inputFieldCount: number; viewport?: string };
+  context?: SessionContext;
 }
 
 const MAX_LINES = 200_000;
@@ -122,6 +130,7 @@ export function extractDigest(ndjson: string): SessionDigest {
   let idleMs = 0;
   let lastTs = 0;
   let clickCount = 0;
+  let viewport: string | undefined;
   const t0 = events.length ? events[0].timestamp : 0;
   let lastNavTs = t0;
 
@@ -141,6 +150,10 @@ export function extractDigest(ndjson: string): SessionDigest {
     }
     lastTs = t;
 
+    if (e.type === 4 && !viewport) {
+      const md = e.data as { width?: number; height?: number } | undefined;
+      if (typeof md?.width === 'number' && typeof md?.height === 'number') viewport = `${md.width}x${md.height}`;
+    }
     // Navigation (Meta + custom url-change), deduped on same URL.
     const href = hrefOf(e);
     if (href) {
@@ -218,6 +231,7 @@ export function extractDigest(ndjson: string): SessionDigest {
       pages,
       clickCount,
       inputFieldCount: inputFirstSeen.size,
+      ...(viewport ? { viewport } : {}),
     },
   };
   addClickInsights(digest, clicks, effects, lastTs);
@@ -316,6 +330,16 @@ export function compactDigest(digest: unknown): string {
     try { const u = new URL(url); return (withHost ? u.host : '') + (u.pathname || '/'); } catch { return url; }
   };
   const lines: string[] = [];
+  if (d.context) {
+    const c = d.context;
+    const parts: string[] = [];
+    if (c.entryUrl) parts.push(`entry ${c.entryUrl}`);
+    parts.push(`from ${c.referrer || 'direct'}`);
+    if (c.browser || c.os) parts.push([c.browser, c.os].filter(Boolean).join(' on '));
+    if (c.country) parts.push(c.country);
+    if (d.stats?.viewport) parts.push(`viewport ${d.stats.viewport}`);
+    lines.push(`context: ${parts.join('; ')}`);
+  }
   lines.push(`duration ${secs(d.stats?.durationMs ?? 0)} (active ${secs(d.stats?.activeMs ?? 0)}), ${d.stats?.clickCount ?? 0} clicks`);
   const pages = (d.stats?.pages ?? [])
     .map((p) => `${pathOf(p.url, false)} ${secs(p.ms)}${p.maxScrollY ? ` scroll ${p.maxScrollY}px` : ''}`)

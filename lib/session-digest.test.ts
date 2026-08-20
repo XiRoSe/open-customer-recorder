@@ -153,7 +153,15 @@ describe('extractDigest durability', () => {
   });
 
   it('exports DIGEST_VERSION', () => {
-    expect(DIGEST_VERSION).toBe(1);
+    expect(DIGEST_VERSION).toBe(2);
+  });
+
+  it('captures the viewport from the first meta event', () => {
+    const d = extractDigest(ndjsonOf([
+      { type: 4, timestamp: T0, data: { href: 'https://x.test/', width: 390, height: 844 } },
+      fullSnapshot(T0, []),
+    ]));
+    expect(d.stats.viewport).toBe('390x844');
   });
 });
 
@@ -251,6 +259,18 @@ describe('compactDigest', () => {
   it('falls back to JSON for digests without steps', async () => {
     const { compactDigest } = await import('./session-digest');
     expect(compactDigest({ marker: 'X' })).toBe('{"marker":"X"}');
+  });
+
+  it('renders the session context line when attached', async () => {
+    const { compactDigest } = await import('./session-digest');
+    const d = extractDigest(ndjsonOf([
+      { type: 4, timestamp: T0, data: { href: 'https://x.test/pricing?utm_source=li', width: 1440, height: 900 } },
+      fullSnapshot(T0, [el(10, 'button', {}, [txt(11, 'Go')])]),
+      click(T0 + 1000, 10),
+    ]));
+    d.context = { entryUrl: 'https://x.test/pricing?utm_source=li', referrer: 'https://www.linkedin.com/', country: 'IL', browser: 'Chrome', os: 'Windows' };
+    const c = compactDigest(d);
+    expect(c).toContain('context: entry https://x.test/pricing?utm_source=li; from https://www.linkedin.com/; Chrome on Windows; IL; viewport 1440x900');
   });
 });
 

@@ -69,6 +69,19 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
           steps: ((summaryRow.digest as { steps?: Step[] } | null)?.steps ?? []),
         } : null}
         llmEnabled={Boolean(process.env.SUMMARIZER_URL)}
+        details={[
+          ...(s.pageUrl ? [{ label: 'Entry page', value: s.pageUrl }] : []),
+          { label: 'Source', value: s.referrer || 'Direct / unknown' },
+          ...(s.country ? [{ label: 'Country', value: s.country }] : []),
+          ...(s.browser ? [{ label: 'Browser', value: s.browser }] : []),
+          ...(s.os ? [{ label: 'OS', value: s.os }] : []),
+          ...((summaryRow?.digest as { stats?: { viewport?: string } } | null)?.stats?.viewport
+            ? [{ label: 'Viewport', value: (summaryRow!.digest as { stats: { viewport: string } }).stats.viewport }] : []),
+          { label: 'Started', value: new Date(s.startedAt).toLocaleString('en-GB') },
+          ...(s.durationMs ? [{ label: 'Duration', value: `${Math.floor(s.durationMs / 60000)}m ${Math.round((s.durationMs % 60000) / 1000)}s` }] : []),
+          { label: 'Pages', value: String(s.pageCount) },
+          { label: 'Events', value: String(s.eventCount) },
+        ]}
       />
     </main>
   );

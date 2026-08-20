@@ -31,6 +31,8 @@ export const sessions = pgTable('sessions', {
   endedAt: timestamp('ended_at', { withTimezone: true }),
   durationMs: integer('duration_ms'),
   pageUrl: text('page_url'),
+  // document.referrer at session start — where the visitor came from.
+  referrer: text('referrer'),
   pageCount: integer('page_count').notNull().default(0),
   eventCount: integer('event_count').notNull().default(0),
   hasErrors: boolean('has_errors').notNull().default(false),

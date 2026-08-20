@@ -70,6 +70,25 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     expect(row.narrative).toContain('Pricing');
   });
 
+  it('a version-bump re-digest keeps an existing AI summary instead of re-queuing it', async () => {
+    const { project } = await createOrgWithProject();
+    const [s] = await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a1', startedAt: new Date(T0), endedAt: new Date(),
+      eventCount: 3, blobPath: '', blobData: makeBlob(), referrer: 'https://google.com/',
+    }).returning();
+    await db.insert(schema.sessionSummaries).values({
+      sessionId: s.id, digest: {}, digestVersion: DIGEST_VERSION - 1, narrative: 'old', insights: [],
+      intentText: 'Existing summary.', status: 'done',
+    });
+    expect(await runSummarySweepOnce()).toBe(1);
+    const [row] = await db.select().from(schema.sessionSummaries).where(eq(schema.sessionSummaries.sessionId, s.id));
+    expect(row.digestVersion).toBe(DIGEST_VERSION);
+    expect(row.status).toBe('done');
+    expect(row.intentText).toBe('Existing summary.');
+    // The refreshed digest carries the session context for future calls.
+    expect((row.digest as { context?: { referrer?: string } }).context?.referrer).toBe('https://google.com/');
+  });
+
   it('writes a failed row instead of throwing on a corrupt blob', async () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({

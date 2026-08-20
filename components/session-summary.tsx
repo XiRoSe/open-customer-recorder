@@ -14,6 +14,8 @@ export interface SummaryData {
   steps: Step[];
 }
 
+export interface SessionDetail { label: string; value: string }
+
 function insightChips(insights: Insight[]): { label: string; detail?: string }[] {
   const counts = new Map<string, { count: number; detail?: string }>();
   for (const i of insights) {
@@ -91,8 +93,8 @@ function StepRow({ step, t0, isFirstNav }: { step: Step; t0: number; isFirstNav:
   );
 }
 
-export function SessionSummary({ sessionId, initial, llmEnabled }: {
-  sessionId: string; initial: SummaryData | null; llmEnabled: boolean;
+export function SessionSummary({ sessionId, initial, llmEnabled, details = [] }: {
+  sessionId: string; initial: SummaryData | null; llmEnabled: boolean; details?: SessionDetail[];
 }) {
   const [data, setData] = useState(initial);
   const waiting = llmEnabled && (!data || data.status === 'pending' || data.status === 'processing');
@@ -173,6 +175,21 @@ export function SessionSummary({ sessionId, initial, llmEnabled }: {
           <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-5 max-h-64 overflow-y-auto">{data.narrative}</pre>
         )}
       </div>
+
+      {/* Session details: entry, source, device — the same facts the AI sees */}
+      {details.length > 0 && (
+        <div className="border-t px-5 py-4">
+          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3">Session details</div>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+            {details.map((d) => (
+              <div key={d.label} className="grid grid-cols-[7rem_1fr] gap-x-3 text-sm">
+                <dt className="text-muted-foreground">{d.label}</dt>
+                <dd className="m-0 break-all">{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
     </Card>
   );
 }

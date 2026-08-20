@@ -21,6 +21,16 @@ function compactDigest(digest) {
     try { const u = new URL(url); return (withHost ? u.host : '') + (u.pathname || '/'); } catch { return url; }
   };
   const lines = [];
+  if (d.context) {
+    const c = d.context;
+    const parts = [];
+    if (c.entryUrl) parts.push(`entry ${c.entryUrl}`);
+    parts.push(`from ${c.referrer || 'direct'}`);
+    if (c.browser || c.os) parts.push([c.browser, c.os].filter(Boolean).join(' on '));
+    if (c.country) parts.push(c.country);
+    if (d.stats?.viewport) parts.push(`viewport ${d.stats.viewport}`);
+    lines.push(`context: ${parts.join('; ')}`);
+  }
   lines.push(`duration ${secs(d.stats?.durationMs ?? 0)} (active ${secs(d.stats?.activeMs ?? 0)}), ${d.stats?.clickCount ?? 0} clicks`);
   const pages = (d.stats?.pages ?? [])
     .map((p) => `${pathOf(p.url, false)} ${secs(p.ms)}${p.maxScrollY ? ` scroll ${p.maxScrollY}px` : ''}`)

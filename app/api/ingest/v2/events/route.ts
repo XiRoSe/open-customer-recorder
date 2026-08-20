@@ -70,6 +70,7 @@ export async function POST(req: NextRequest | Request) {
   const sid = url.searchParams.get('sid');
   const anonId = url.searchParams.get('a');
   const pageUrl = url.searchParams.get('u') || null;
+  const referrer = (url.searchParams.get('r') || '').slice(0, 512) || null;
   const clientPageCount = parseInt(url.searchParams.get('p') || '0', 10) || 0;
   const isEnd = req.headers.get('x-mega-end') === '1';
 
@@ -137,6 +138,7 @@ export async function POST(req: NextRequest | Request) {
     projectId: project.id,
     anonId,
     pageUrl,
+    referrer,
     userAgent: req.headers.get('user-agent') || '',
     browser: ua.browser,
     os: ua.os,
