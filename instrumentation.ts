@@ -23,24 +23,34 @@ export async function register() {
   const { runSummarySweepOnce } = await import('./lib/session-summaries');
   const { drainSummaryQueue, resetStuckProcessing } = await import('./lib/summary-worker');
 
-  // Session narratives: digest ended sessions, then drain the LLM queue in
-  // one burst (keeps the app-sleeping summarizer awake only once per cycle).
-  // The inFlight flag stops cycles from stacking when a burst outlives the
-  // interval (CPU inference is 15-30s per summary).
-  let summaryInFlight = false;
-  const summaryCycle = async () => {
-    if (summaryInFlight) return;
-    summaryInFlight = true;
-    try {
-      await resetStuckProcessing();
-      await runSummarySweepOnce();
-      await drainSummaryQueue();
-    } catch (e) {
-      console.warn('[summaries] cycle failed', e);
-    } finally {
-      summaryInFlight = false;
-    }
+  // Session narratives: three INDEPENDENT loops. Sweep and drain must not
+  // share a cycle — a large backlog drain can run for hours, and fresh
+  // sessions would get no digest (and no narrative) until it finished.
+  // Each loop has its own inFlight guard so slow runs don't stack.
+  let sweepInFlight = false;
+  const sweepCycle = async () => {
+    if (sweepInFlight) return;
+    sweepInFlight = true;
+    try { await runSummarySweepOnce(); }
+    catch (e) { console.warn('[summaries] sweep failed', e); }
+    finally { sweepInFlight = false; }
   };
-  summaryCycle(); // boot run backfills existing history batch by batch
-  setInterval(summaryCycle, 60 * 1000);
+  let drainInFlight = false;
+  const drainCycle = async () => {
+    if (drainInFlight) return;
+    drainInFlight = true;
+    try { await drainSummaryQueue(); }
+    catch (e) { console.warn('[summaries] drain failed', e); }
+    finally { drainInFlight = false; }
+  };
+  // Boot: recover rows orphaned in 'processing' by a mid-call restart,
+  // then start sweeping/draining.
+  resetStuckProcessing().catch((e) => console.warn('[summaries] reset failed', e));
+  sweepCycle();
+  drainCycle();
+  setInterval(sweepCycle, 60 * 1000);
+  setInterval(drainCycle, 60 * 1000);
+  setInterval(() => {
+    resetStuckProcessing().catch((e) => console.warn('[summaries] reset failed', e));
+  }, 5 * 60 * 1000);
 }
