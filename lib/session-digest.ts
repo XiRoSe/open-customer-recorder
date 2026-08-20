@@ -66,9 +66,15 @@ function indexTree(node: SerializedNode, parentId: number, nodes: Map<number, No
   }
 }
 
+// Layout containers never donate their (aggregated) text to a clicked
+// descendant — a click on a decoration inside a hero div must not read
+// as a click on the hero's button text.
+const CONTAINER_TAGS = new Set(['div', 'section', 'main', 'body', 'html', 'nav', 'form', 'article', 'aside', 'ul', 'ol', 'table', 'header', 'footer']);
+
 /** Resolve a clicked/typed node id to {tag, label}. Walk up ≤6 nodes:
  * a button/a ancestor wins (it's the interactive element the user meant),
- * otherwise the first labeled node on the way up, otherwise a tag fallback. */
+ * otherwise the first labeled non-container node on the way up,
+ * otherwise a tag fallback. */
 function resolve(nodes: Map<number, NodeInfo>, id: number): { tag: string; label: string } {
   let cur = nodes.get(id);
   if (!cur) return { tag: 'unknown', label: '<unknown>' };
@@ -78,7 +84,8 @@ function resolve(nodes: Map<number, NodeInfo>, id: number): { tag: string; label
     if (cur.tag === 'button' || cur.tag === 'a') {
       return { tag: cur.tag, label: cur.label || firstLabel || `<${cur.tag}>` };
     }
-    if (!firstLabel && cur.label) firstLabel = cur.label;
+    const donatable = i === 0 || !CONTAINER_TAGS.has(cur.tag);
+    if (!firstLabel && donatable && cur.label) firstLabel = cur.label;
     cur = nodes.get(cur.parentId);
   }
   return { tag: selfTag, label: firstLabel || `<${selfTag}>` };

@@ -62,6 +62,16 @@ describe('extractDigest steps', () => {
     expect(d.steps.filter((s) => s.kind === 'click')[0]).toMatchObject({ label: 'Sign up', tag: 'a' });
   });
 
+  it('does not let layout containers donate text to unlabeled descendants', () => {
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/'),
+      // hero div contains a labeled button AND a bare decorative div
+      fullSnapshot(T0, [el(20, 'div', {}, [el(21, 'button', {}, [txt(22, 'Start free trial')]), el(23, 'div')])]),
+      click(T0 + 100, 23),
+    ]));
+    expect(d.steps.filter((s) => s.kind === 'click')[0]).toMatchObject({ label: '<div>', tag: 'div' });
+  });
+
   it('labels nodes added by later mutations', () => {
     const d = extractDigest(ndjsonOf([
       meta(T0, 'https://x.test/'),
