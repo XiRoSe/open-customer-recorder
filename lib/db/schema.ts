@@ -154,8 +154,31 @@ export const appSettings = pgTable('app_settings', {
   summariesEnabled: boolean('summaries_enabled').notNull().default(true),
   intentEnabled: boolean('intent_enabled').notNull().default(true),
   visualEnabled: boolean('visual_enabled').notNull().default(true),
+  profilesEnabled: boolean('profiles_enabled').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Visitor-level profile: a second-pass LLM summary over a visitor's
+// per-session intent summaries. visitorKey mirrors the Users page's
+// grouping — coalesce(user_id, anon_id). sessionsSummarized records how
+// many done session summaries fed the profile; when a visitor gains a
+// new summarized session the counts diverge and the sweep re-queues the
+// row. Same status/attempts/nextRetryAt queue pattern as session_summaries.
+export const userProfiles = pgTable('user_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  visitorKey: text('visitor_key').notNull(),
+  profileText: text('profile_text'),
+  sessionsSummarized: integer('sessions_summarized').notNull().default(0),
+  status: text('status').notNull().default('pending'), // pending | processing | done | failed
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  projectVisitorIdx: uniqueIndex('user_profiles_project_visitor_idx').on(t.projectId, t.visitorKey),
+  statusIdx: index('user_profiles_status_idx').on(t.status, t.nextRetryAt),
+}));
 
 export const sessionLinks = pgTable('session_links', {
   id: uuid('id').defaultRandom().primaryKey(),

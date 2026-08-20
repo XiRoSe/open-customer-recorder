@@ -22,6 +22,7 @@ export async function register() {
 
   const { runSummarySweepOnce } = await import('./lib/session-summaries');
   const { drainSummaryQueue, resetStuckProcessing } = await import('./lib/summary-worker');
+  const { sweepUserProfilesOnce, drainUserProfiles } = await import('./lib/user-profiles');
 
   // Session narratives: three INDEPENDENT loops. Sweep and drain must not
   // share a cycle — a large backlog drain can run for hours, and fresh
@@ -39,8 +40,12 @@ export async function register() {
   const drainCycle = async () => {
     if (drainInFlight) return;
     drainInFlight = true;
+    // Sessions first, then visitor profiles — profiles feed on the
+    // session summaries the first drain just produced.
     try { await drainSummaryQueue(); }
     catch (e) { console.warn('[summaries] drain failed', e); }
+    try { await sweepUserProfilesOnce(); await drainUserProfiles(); }
+    catch (e) { console.warn('[profiles] cycle failed', e); }
     finally { drainInFlight = false; }
   };
   // Boot: recover rows orphaned in 'processing' by a mid-call restart,

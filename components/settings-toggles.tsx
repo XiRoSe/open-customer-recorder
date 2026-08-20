@@ -20,6 +20,11 @@ const FEATURES: { key: keyof AppSettings; title: string; description: string }[]
     title: 'Visual analysis',
     description: 'Attach up to two replay screenshots to the AI call so the summary can mention what the visitor actually saw. Adds ~20s per session.',
   },
+  {
+    key: 'profilesEnabled',
+    title: 'Visitor profiles',
+    description: 'Summarize a visitor’s session summaries into one profile on the Users page: what they want across visits, recurring friction, engagement trend. Rebuilds automatically after each new session.',
+  },
 ];
 
 export function SettingsToggles({ initial }: { initial: AppSettings }) {

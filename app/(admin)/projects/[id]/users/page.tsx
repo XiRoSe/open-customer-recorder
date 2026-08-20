@@ -10,6 +10,8 @@ import { ExcludeUserButton } from '@/components/exclude-user-button';
 import { excludedAnonIdsAmong } from '@/lib/excluded-users';
 import { SortableHead } from '@/components/sortable-head';
 import { resolveSort, sortHref, type SortDir } from '@/lib/table-sort';
+import { profilesForVisitors } from '@/lib/user-profiles';
+import { SummaryCell } from '@/components/summary-cell';
 
 const SORT_COLUMNS = ['sessions', 'time', 'lastSeen', 'country', 'browser'] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -89,6 +91,7 @@ export default async function UsersPage(props: {
     .limit(100);
 
   const excludedAnonIds = await excludedAnonIdsAmong(id, rows.map((r) => r.anonId));
+  const profilesByKey = await profilesForVisitors(id, rows.map((r) => r.key));
 
   const basePath = `/projects/${id}/users`;
   const sessionsHrefBase = `/projects/${id}/sessions`;
@@ -127,6 +130,7 @@ export default async function UsersPage(props: {
           <TableHeader>
             <TableRow>
               <TableHead>User</TableHead>
+              <TableHead>Profile</TableHead>
               <SortableHead href={colHref('sessions')} active={sort.column === 'sessions'} dir={sort.dir}>Sessions</SortableHead>
               <SortableHead href={colHref('time')} active={sort.column === 'time'} dir={sort.dir}>Total time</SortableHead>
               <SortableHead href={colHref('lastSeen')} active={sort.column === 'lastSeen'} dir={sort.dir}>Last seen</SortableHead>
@@ -137,7 +141,7 @@ export default async function UsersPage(props: {
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
-              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                 {activeRange.hours !== null
                   ? <>No users active in the last {activeRange.label}. <Link href={`${basePath}?range=all`} className="underline">Show all time</Link>.</>
                   : 'No users yet.'}
@@ -151,6 +155,9 @@ export default async function UsersPage(props: {
                       <span className="text-muted-foreground">Anonymous {u.anonId.slice(0, 8)}</span>
                     )}
                   </Link>
+                </TableCell>
+                <TableCell>
+                  <SummaryCell text={profilesByKey.get(u.key)?.profileText ?? null} />
                 </TableCell>
                 <TableCell>{u.sessionCount}</TableCell>
                 <TableCell>{fmtDuration(u.totalDuration ? Number(u.totalDuration) : null)}</TableCell>

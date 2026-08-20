@@ -5,12 +5,14 @@ export interface AppSettings {
   summariesEnabled: boolean;
   intentEnabled: boolean;
   visualEnabled: boolean;
+  profilesEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   summariesEnabled: true,
   intentEnabled: true,
   visualEnabled: true,
+  profilesEnabled: true,
 };
 
 /** Settings for the given org, or for the singleton org when omitted
@@ -29,6 +31,7 @@ export async function getAppSettings(orgId?: string): Promise<AppSettings> {
     summariesEnabled: row.summariesEnabled,
     intentEnabled: row.intentEnabled,
     visualEnabled: row.visualEnabled,
+    profilesEnabled: row.profilesEnabled,
   };
 }
 

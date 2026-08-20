@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest | Request) {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
   const patch: Partial<AppSettings> = {};
-  for (const key of ['summariesEnabled', 'intentEnabled', 'visualEnabled'] as const) {
+  for (const key of ['summariesEnabled', 'intentEnabled', 'visualEnabled', 'profilesEnabled'] as const) {
     if (typeof body[key] === 'boolean') patch[key] = body[key];
   }
   if (Object.keys(patch).length === 0) {

@@ -28,7 +28,7 @@ describe.skipIf(!dbReady)('GET/PUT /api/admin/settings', () => {
 
     let res = await GET();
     expect(res.status).toBe(200);
-    expect((await res.json()).settings).toEqual({ summariesEnabled: true, intentEnabled: true, visualEnabled: true });
+    expect((await res.json()).settings).toEqual({ summariesEnabled: true, intentEnabled: true, visualEnabled: true, profilesEnabled: true });
 
     res = await PUT(new Request('http://localhost/api/admin/settings', {
       method: 'PUT', body: JSON.stringify({ visualEnabled: false, junk: 'ignored' }),
