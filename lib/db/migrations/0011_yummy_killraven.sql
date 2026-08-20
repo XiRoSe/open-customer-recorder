@@ -1,0 +1,1 @@
+ALTER TABLE "session_summaries" ADD COLUMN "visual_used" boolean DEFAULT false NOT NULL;

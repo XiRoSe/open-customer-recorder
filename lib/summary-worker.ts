@@ -101,16 +101,19 @@ export async function drainSummaryQueue(
     if (!row) break;
     try {
       const content: ContentPart[] = [{ type: 'text', text: JSON.stringify(row.digest) }];
+      let visualUsed = false;
       if (settings.visualEnabled) {
         const frames = await framesFor(row.session_id, row.digest as SessionDigest, frameRenderer);
         for (const b64 of frames) {
           content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } });
         }
+        visualUsed = frames.length > 0;
       }
       const intentText = await callSummarizer(baseUrl, content, fetchFn);
       await db.execute(sql`
         UPDATE ${schema.sessionSummaries}
-        SET status = 'done', intent_text = ${intentText}, model = ${modelLabel}, updated_at = now()
+        SET status = 'done', intent_text = ${intentText}, model = ${modelLabel},
+            visual_used = ${visualUsed}, updated_at = now()
         WHERE id = ${row.id}
       `);
       done++;

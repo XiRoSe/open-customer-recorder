@@ -132,6 +132,9 @@ export const sessionSummaries = pgTable('session_summaries', {
   narrative: text('narrative').notNull(),
   insights: jsonb('insights').notNull(),
   intentText: text('intent_text'),
+  // Whether replay screenshots were attached to the LLM call that produced
+  // intentText — drives the "Visual analysis" chip in the UI.
+  visualUsed: boolean('visual_used').notNull().default(false),
   status: text('status').notNull().default('pending'), // pending | processing | done | failed
   attempts: integer('attempts').notNull().default(0),
   nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),

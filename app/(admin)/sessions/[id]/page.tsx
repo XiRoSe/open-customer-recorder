@@ -10,7 +10,7 @@ import { SessionSummary } from '@/components/session-summary';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { TagColor } from '@/lib/tag-colors';
-import type { Insight } from '@/lib/session-digest';
+import type { Insight, Step } from '@/lib/session-digest';
 
 export default async function SessionReplayPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -32,7 +32,9 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
     narrative: schema.sessionSummaries.narrative,
     insights: schema.sessionSummaries.insights,
     intentText: schema.sessionSummaries.intentText,
+    visualUsed: schema.sessionSummaries.visualUsed,
     status: schema.sessionSummaries.status,
+    digest: schema.sessionSummaries.digest,
   }).from(schema.sessionSummaries).where(eq(schema.sessionSummaries.sessionId, id)).limit(1);
 
   return (
@@ -58,7 +60,14 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
       </Card>
       <SessionSummary
         sessionId={id}
-        initial={summaryRow ? { ...summaryRow, insights: summaryRow.insights as Insight[] } : null}
+        initial={summaryRow ? {
+          narrative: summaryRow.narrative,
+          intentText: summaryRow.intentText,
+          visualUsed: summaryRow.visualUsed,
+          status: summaryRow.status,
+          insights: summaryRow.insights as Insight[],
+          steps: ((summaryRow.digest as { steps?: Step[] } | null)?.steps ?? []),
+        } : null}
         llmEnabled={Boolean(process.env.SUMMARIZER_URL)}
       />
     </main>

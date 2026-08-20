@@ -20,9 +20,14 @@ export async function GET(_req: NextRequest | Request, ctx: { params: Promise<{ 
     narrative: schema.sessionSummaries.narrative,
     insights: schema.sessionSummaries.insights,
     intentText: schema.sessionSummaries.intentText,
+    visualUsed: schema.sessionSummaries.visualUsed,
     status: schema.sessionSummaries.status,
+    digest: schema.sessionSummaries.digest,
   }).from(schema.sessionSummaries).where(eq(schema.sessionSummaries.sessionId, id)).limit(1);
-  return NextResponse.json({ summary: row ?? null });
+  if (!row) return NextResponse.json({ summary: null });
+  const { digest, ...rest } = row;
+  const steps = (digest as { steps?: unknown[] } | null)?.steps ?? [];
+  return NextResponse.json({ summary: { ...rest, steps } });
 }
 
 /** Regenerate: back to pending so the next worker cycle re-runs the LLM.
