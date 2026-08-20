@@ -300,6 +300,43 @@ function mss(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** Token-lean plain-text rendering of a digest for the LLM prompt.
+ * Raw digest JSON costs ~25-30 tokens per step (13-digit timestamps,
+ * verbose keys); this costs ~5 — for a long session that's the
+ * difference between ~2,000 and ~350 prompt tokens. Falls back to JSON
+ * for digests without steps (legacy/failed rows).
+ * Keep the mirror copy in scripts/export-training-data.mjs in sync —
+ * fine-tuning data must match the inference prompt. */
+export function compactDigest(digest: unknown): string {
+  const d = digest as SessionDigest;
+  if (!d || !Array.isArray(d.steps) || d.steps.length === 0) return JSON.stringify(digest);
+  const t0 = d.steps[0].t;
+  const secs = (ms: number) => `${Math.round(ms / 1000)}s`;
+  const pathOf = (url: string, withHost: boolean) => {
+    try { const u = new URL(url); return (withHost ? u.host : '') + (u.pathname || '/'); } catch { return url; }
+  };
+  const lines: string[] = [];
+  lines.push(`duration ${secs(d.stats?.durationMs ?? 0)} (active ${secs(d.stats?.activeMs ?? 0)}), ${d.stats?.clickCount ?? 0} clicks`);
+  const pages = (d.stats?.pages ?? [])
+    .map((p) => `${pathOf(p.url, false)} ${secs(p.ms)}${p.maxScrollY ? ` scroll ${p.maxScrollY}px` : ''}`)
+    .join(', ');
+  if (pages) lines.push(`pages: ${pages}`);
+  lines.push('steps:');
+  for (const s of d.steps) {
+    const at = mss(s.t - t0);
+    if (s.kind === 'nav') lines.push(`${at} nav ${pathOf(s.url, true)}`);
+    else if (s.kind === 'click') lines.push(`${at} click "${s.label}"`);
+    else if (s.kind === 'input') lines.push(`${at} typed-in ${s.field}`);
+    else if (s.ms > 0) lines.push(`${at} idle ${secs(s.ms)}`);
+  }
+  if (d.insights?.length) {
+    lines.push('signals: ' + d.insights
+      .map((i) => `${i.kind}${i.count ? ` x${i.count}` : ''}${i.detail ? ` (${i.detail})` : ''}${i.at > 0 ? ` @${mss(i.at - t0)}` : ''}`)
+      .join('; '));
+  }
+  return lines.join('\n');
+}
+
 export function renderNarrative(d: SessionDigest): string {
   if (d.steps.length === 0) return 'No activity captured.';
   const t0 = d.steps[0].t;

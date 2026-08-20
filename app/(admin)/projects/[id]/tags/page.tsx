@@ -54,6 +54,8 @@ export default async function TagsPage(props: { params: Promise<{ id: string }> 
           <Link href={`/projects/${id}/users`} className="text-muted-foreground hover:underline">Users</Link>
           <span className="text-muted-foreground">·</span>
           <span className="font-medium">Tags</span>
+          <span className="text-muted-foreground">·</span>
+          <Link href="/settings" className="text-muted-foreground hover:underline">Settings</Link>
         </div>
       </div>
 

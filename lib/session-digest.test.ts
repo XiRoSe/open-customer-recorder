@@ -225,6 +225,35 @@ describe('insights', () => {
   });
 });
 
+describe('compactDigest', () => {
+  it('renders a token-lean text log: relative times, paths, signals, no JSON keys or raw timestamps', async () => {
+    const { compactDigest } = await import('./session-digest');
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/signup'),
+      fullSnapshot(T0, [el(10, 'input', { placeholder: 'Email' }), el(20, 'button', {}, [txt(21, 'Pricing')])]),
+      click(T0 + 5000, 20),
+      input(T0 + 9000, 10),
+    ]));
+    const c = compactDigest(d);
+    expect(c).toContain('steps:');
+    expect(c).toContain('0:05 click "Pricing"');
+    expect(c).toContain('0:09 typed-in Email');
+    expect(c).toContain('nav x.test/signup');
+    expect(c).toContain('signals: ');
+    expect(c).toContain('form_abandon (Email)');
+    expect(c).not.toContain('"kind"');
+    expect(c).not.toMatch(/\d{13}/); // no epoch timestamps
+    // Smaller than the raw JSON it replaces even for a tiny session;
+    // the per-step savings compound on realistic ones.
+    expect(c.length).toBeLessThan(JSON.stringify(d).length / 2);
+  });
+
+  it('falls back to JSON for digests without steps', async () => {
+    const { compactDigest } = await import('./session-digest');
+    expect(compactDigest({ marker: 'X' })).toBe('{"marker":"X"}');
+  });
+});
+
 describe('renderNarrative', () => {
   it('renders one line per step with m:ss offsets', async () => {
     const { renderNarrative } = await import('./session-digest');

@@ -115,6 +115,8 @@ export default async function UsersPage(props: {
           <span className="font-medium">Users</span>
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
+          <span className="text-muted-foreground">·</span>
+          <Link href="/settings" className="text-muted-foreground hover:underline">Settings</Link>
         </div>
       </div>
 

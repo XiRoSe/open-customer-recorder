@@ -5,8 +5,11 @@ import type { Browser } from 'playwright-core';
 import { buildReplayHtml } from './replay-html';
 import type { SessionDigest } from './session-digest';
 
-export const FRAME_W = 800;
-export const FRAME_H = 450;
+// 640×360 ≈ 242 image tokens ≈ 5s vision eval on the CPU summarizer
+// (benchmarked 2026-08-20; tokens scale ~1 per 970 px). UI text is still
+// legible to the model at this size.
+export const FRAME_W = 640;
+export const FRAME_H = 360;
 export const MAX_FRAMES = 2;
 
 /** Moments to screenshot, as ms offsets from session start.

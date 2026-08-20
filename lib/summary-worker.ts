@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
 import { pickFrameMoments, renderSessionFrames } from './session-frames';
-import type { SessionDigest } from './session-digest';
+import { compactDigest, type SessionDigest } from './session-digest';
 import { gunzipSync } from 'node:zlib';
 import { eq } from 'drizzle-orm';
 
@@ -11,7 +11,7 @@ const REQUEST_TIMEOUT_MS = 120_000;
 
 // Keep byte-identical to scripts/export-training-data.mjs — fine-tuning
 // data must match the inference prompt.
-const SYSTEM_PROMPT = `You analyze a website visitor's session digest (JSON: steps the visitor took, frustration signals, timing stats). Screenshots of key replay moments may be attached - mention visible layout or content problems only if they are clearly relevant.
+const SYSTEM_PROMPT = `You analyze a website visitor's session activity log (steps the visitor took, frustration signals, timing stats). Screenshots of key replay moments may be attached - mention visible layout or content problems only if they are clearly relevant.
 Write 2-3 plain sentences: what the visitor was likely trying to do, and any friction they hit.
 Only state what the data supports. No markdown, no preamble, no bullet points.`;
 
@@ -100,7 +100,7 @@ export async function drainSummaryQueue(
     const row = await claimOne();
     if (!row) break;
     try {
-      const content: ContentPart[] = [{ type: 'text', text: JSON.stringify(row.digest) }];
+      const content: ContentPart[] = [{ type: 'text', text: compactDigest(row.digest) }];
       let visualUsed = false;
       if (settings.visualEnabled) {
         const frames = await framesFor(row.session_id, row.digest as SessionDigest, frameRenderer);
