@@ -5,6 +5,8 @@ import { and, eq, asc, desc, count, or, gt, notExists } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { viewedSessionIds } from '@/lib/session-views';
 import { tagsForSessions } from '@/lib/session-tags';
+import { insightsForSessions } from '@/lib/session-summaries';
+import { INSIGHT_META } from '@/lib/insight-meta';
 import type { TagColor } from '@/lib/tag-colors';
 import { RefreshOnReturn } from '@/components/refresh-on-return';
 import { Card } from '@/components/ui/card';
@@ -33,6 +35,12 @@ const SORT_EXPR: Record<SortColumn, typeof schema.sessions.startedAt | typeof sc
 const SORT_DEFAULT_DIR: Record<SortColumn, SortDir> = {
   when: 'desc', duration: 'desc', pages: 'desc', country: 'asc', browser: 'asc', errors: 'desc',
 };
+
+function dedupeInsightKinds(insights: { kind: string }[]): { kind: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const i of insights) counts.set(i.kind, (counts.get(i.kind) || 0) + 1);
+  return [...counts.entries()].map(([kind, count]) => ({ kind, count }));
+}
 
 function fmtDuration(ms: number | null) {
   if (!ms) return '—';
@@ -102,6 +110,7 @@ export default async function SessionsPage(props: {
   // Which of the rows shown has the current admin already viewed?
   const viewedByMe = await viewedSessionIds(rows.map((r) => r.id), session.email);
   const tagsBySession = await tagsForSessions(rows.map((r) => r.id));
+  const insightsBySession = await insightsForSessions(rows.map((r) => r.id));
 
   const basePath = `/projects/${id}/sessions`;
   const clearUserHref = activeRange.value === '24h' ? basePath : `${basePath}?range=${activeRange.value}`;
@@ -187,6 +196,14 @@ export default async function SessionsPage(props: {
                     {(tagsBySession.get(s.id) ?? []).map((t) => (
                       <Badge key={t.id} variant={t.color as TagColor}>{t.name}</Badge>
                     ))}
+                    {dedupeInsightKinds(insightsBySession.get(s.id) ?? []).map(({ kind, count }) => {
+                      const meta = INSIGHT_META[kind] ?? { emoji: '•', label: kind };
+                      return (
+                        <Badge key={kind} variant="secondary" title={meta.label}>
+                          {meta.emoji}{count > 1 ? ` ×${count}` : ''}
+                        </Badge>
+                      );
+                    })}
                   </div>
                 </TableCell>
                 <TableCell>{fmtDuration(s.durationMs)}</TableCell>

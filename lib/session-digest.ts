@@ -1,0 +1,317 @@
+// Deterministic "session → words" extractor. One O(n) pass over a
+// session's decompressed rrweb NDJSON. Dependency-free (same discipline
+// as lib/url-timeline.ts). Never reads input VALUES — only field
+// names/labels/placeholders.
+import { hrefOf, type RawEvent } from './url-timeline';
+
+export const DIGEST_VERSION = 1;
+
+export type Step =
+  | { t: number; kind: 'nav'; url: string }
+  | { t: number; kind: 'click'; label: string; tag: string }
+  | { t: number; kind: 'input'; field: string }
+  | { t: number; kind: 'idle'; ms: number };
+
+export interface Insight { kind: string; at: number; detail?: string; count?: number }
+export interface PageStat { url: string; ms: number; maxScrollY: number }
+export interface SessionDigest {
+  steps: Step[];
+  insights: Insight[];
+  stats: { durationMs: number; activeMs: number; pages: PageStat[]; clickCount: number; inputFieldCount: number };
+}
+
+const MAX_LINES = 200_000;
+const MAX_NODES = 50_000;
+const MAX_STEPS = 60;
+const IDLE_GAP_MS = 30_000;
+const LABEL_MAX = 60;
+
+interface NodeInfo { tag: string; label: string; parentId: number }
+
+// --- serialized rrweb node tree -> label map -------------------------------
+
+interface SerializedNode {
+  type: number; id: number; tagName?: string; textContent?: string;
+  attributes?: Record<string, unknown>; childNodes?: SerializedNode[];
+}
+
+function attrLabel(attrs: Record<string, unknown> | undefined): string {
+  if (!attrs) return '';
+  for (const key of ['aria-label', 'title', 'alt', 'placeholder', 'name']) {
+    const v = attrs[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return '';
+}
+
+function descendantText(node: SerializedNode, depth: number): string {
+  if (depth > 3) return '';
+  if (node.type === 3) return (node.textContent || '').trim();
+  let out = '';
+  for (const c of node.childNodes || []) {
+    out += ' ' + descendantText(c, depth + 1);
+    if (out.length > LABEL_MAX * 2) break;
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+function indexTree(node: SerializedNode, parentId: number, nodes: Map<number, NodeInfo>) {
+  if (nodes.size >= MAX_NODES || typeof node.id !== 'number') return;
+  if (node.type === 2 && node.tagName) {
+    const label = descendantText(node, 0) || attrLabel(node.attributes);
+    nodes.set(node.id, { tag: node.tagName.toLowerCase(), label: label.slice(0, LABEL_MAX), parentId });
+    for (const c of node.childNodes || []) indexTree(c, node.id, nodes);
+  } else {
+    for (const c of node.childNodes || []) indexTree(c, parentId, nodes);
+  }
+}
+
+// Layout containers never donate their (aggregated) text to a clicked
+// descendant — a click on a decoration inside a hero div must not read
+// as a click on the hero's button text.
+const CONTAINER_TAGS = new Set(['div', 'section', 'main', 'body', 'html', 'nav', 'form', 'article', 'aside', 'ul', 'ol', 'table', 'header', 'footer']);
+
+/** Resolve a clicked/typed node id to {tag, label}. Walk up ≤6 nodes:
+ * a button/a ancestor wins (it's the interactive element the user meant),
+ * otherwise the first labeled non-container node on the way up,
+ * otherwise a tag fallback. */
+function resolve(nodes: Map<number, NodeInfo>, id: number): { tag: string; label: string } {
+  let cur = nodes.get(id);
+  if (!cur) return { tag: 'unknown', label: '<unknown>' };
+  const selfTag = cur.tag;
+  let firstLabel = '';
+  for (let i = 0; i < 6 && cur; i++) {
+    if (cur.tag === 'button' || cur.tag === 'a') {
+      return { tag: cur.tag, label: cur.label || firstLabel || `<${cur.tag}>` };
+    }
+    const donatable = i === 0 || !CONTAINER_TAGS.has(cur.tag);
+    if (!firstLabel && donatable && cur.label) firstLabel = cur.label;
+    cur = nodes.get(cur.parentId);
+  }
+  return { tag: selfTag, label: firstLabel || `<${selfTag}>` };
+}
+
+// --- main pass --------------------------------------------------------------
+
+interface ClickEvt { t: number; id: number; x: number; y: number; tag: string; label: string }
+
+export function extractDigest(ndjson: string): SessionDigest {
+  const events: RawEvent[] = [];
+  let lines = 0;
+  for (const raw of ndjson.split('\n')) {
+    if (!raw.trim() || ++lines > MAX_LINES) continue;
+    try {
+      const e = JSON.parse(raw) as RawEvent;
+      if (typeof e.type === 'number' && typeof e.timestamp === 'number') events.push(e);
+    } catch { /* tolerate truncated/corrupt lines */ }
+  }
+  events.sort((a, b) => a.timestamp - b.timestamp);
+
+  const nodes = new Map<number, NodeInfo>();
+  const steps: Step[] = [];
+  const insights: Insight[] = [];
+  const clicks: ClickEvt[] = [];
+  const pages: PageStat[] = [];
+  const inputFirstSeen = new Map<string, number>(); // field label -> first ts
+  let lastInputField = '';
+  let lastInputTs = 0;
+  let lastUrl = '';
+  let lastMetaHref = '';
+  let lastMetaTs = 0;
+  let refreshRun = 1;
+  let idleMs = 0;
+  let lastTs = 0;
+  let clickCount = 0;
+  const t0 = events.length ? events[0].timestamp : 0;
+  let lastNavTs = t0;
+
+  const closePage = (t: number) => {
+    if (pages.length) pages[pages.length - 1].ms = t - Math.max(t0, lastNavTs);
+  };
+
+  // Timestamps of "the page did something" events (mutation/nav/input) —
+  // used for dead-click verdicts in Task 2's heuristics.
+  const effects: number[] = [];
+
+  for (const e of events) {
+    const t = e.timestamp;
+    if (lastTs && t - lastTs > IDLE_GAP_MS) {
+      steps.push({ t: lastTs, kind: 'idle', ms: t - lastTs });
+      idleMs += t - lastTs;
+    }
+    lastTs = t;
+
+    // Navigation (Meta + custom url-change), deduped on same URL.
+    const href = hrefOf(e);
+    if (href) {
+      if (e.type === 4) {
+        // refresh loop: repeated full loads of the same URL within 30s
+        if (href === lastMetaHref && t - lastMetaTs <= 30_000) {
+          refreshRun++;
+          if (refreshRun === 2) insights.push({ kind: 'refresh_loop', at: t, detail: href, count: 2 });
+          else { const last = insights[insights.length - 1]; if (last?.kind === 'refresh_loop') last.count = refreshRun; }
+        } else refreshRun = 1;
+        lastMetaHref = href; lastMetaTs = t;
+      }
+      if (href !== lastUrl) {
+        closePage(t);
+        steps.push({ t, kind: 'nav', url: href });
+        pages.push({ url: href, ms: 0, maxScrollY: 0 });
+        lastUrl = href; lastNavTs = t;
+        effects.push(t);
+      }
+      continue;
+    }
+
+    if (e.type === 2) {
+      const node = (e.data as { node?: SerializedNode } | undefined)?.node;
+      if (node) indexTree(node, 0, nodes);
+      continue;
+    }
+
+    if (e.type !== 3) continue;
+    const d = e.data as { source?: number } & Record<string, unknown>;
+    switch (d.source) {
+      case 0: { // Mutation
+        const adds = (d.adds as { parentId: number; node: SerializedNode }[] | undefined) || [];
+        for (const a of adds) indexTree(a.node, a.parentId, nodes);
+        const removes = (d.removes as { id: number }[] | undefined) || [];
+        for (const r of removes) nodes.delete(r.id);
+        effects.push(t);
+        break;
+      }
+      case 2: { // MouseInteraction — Click only
+        if ((d as { type?: number }).type !== 2) break;
+        const id = d.id as number;
+        const { tag, label } = resolve(nodes, id);
+        clicks.push({ t, id, x: (d.x as number) ?? 0, y: (d.y as number) ?? 0, tag, label });
+        clickCount++;
+        steps.push({ t, kind: 'click', label, tag });
+        break;
+      }
+      case 3: { // Scroll
+        if (pages.length) pages[pages.length - 1].maxScrollY = Math.max(pages[pages.length - 1].maxScrollY, (d.y as number) || 0);
+        break;
+      }
+      case 5: { // Input — field identity only, NEVER the value
+        const { tag, label } = resolve(nodes, d.id as number);
+        const field = label && !label.startsWith('<') ? label : `<${tag}>`;
+        effects.push(t);
+        if (field !== lastInputField || t - lastInputTs > 10_000) {
+          steps.push({ t, kind: 'input', field });
+          if (!inputFirstSeen.has(field)) inputFirstSeen.set(field, t);
+        }
+        lastInputField = field; lastInputTs = t;
+        break;
+      }
+    }
+  }
+  closePage(lastTs);
+
+  const durationMs = events.length ? lastTs - t0 : 0;
+  const digest: SessionDigest = {
+    steps: elide(steps),
+    insights,
+    stats: {
+      durationMs,
+      activeMs: Math.max(0, durationMs - idleMs),
+      pages,
+      clickCount,
+      inputFieldCount: inputFirstSeen.size,
+    },
+  };
+  addClickInsights(digest, clicks, effects, lastTs);
+  addNavInsights(digest);
+  addFormInsights(digest, clicks, inputFirstSeen, lastInputField, lastInputTs, lastTs);
+  digest.insights.sort((a, b) => a.at - b.at);
+  return digest;
+}
+
+function elide(steps: Step[]): Step[] {
+  if (steps.length <= MAX_STEPS) return steps;
+  const head = steps.slice(0, MAX_STEPS - 10);
+  const tail = steps.slice(-9);
+  const marker: Step = { t: tail[0].t, kind: 'idle', ms: 0 };
+  return [...head, marker, ...tail].slice(0, MAX_STEPS);
+}
+
+// --- heuristic insight passes ------------------------------------------------
+
+const RAGE_GAP_MS = 700;
+const RAGE_RADIUS_PX = 30;
+const DEAD_CLICK_MS = 1000;
+const UTURN_MS = 10_000;
+const SUBMIT_RE = /submit|sign\s?in|sign\s?up|log\s?in|register|send|save|continue|next|checkout|subscribe|buy|create/i;
+const SUCCESS_URL_RE = /thank|success|welcome|confirm|complete/i;
+
+function addClickInsights(d: SessionDigest, clicks: ClickEvt[], effects: number[], endTs: number) {
+  // Rage: run of consecutive clicks, gap ≤700ms, within 30px of the previous.
+  let run = 1;
+  for (let i = 1; i <= clicks.length; i++) {
+    const prev = clicks[i - 1];
+    const cur = clicks[i];
+    const chained = cur && cur.t - prev.t <= RAGE_GAP_MS &&
+      Math.hypot(cur.x - prev.x, cur.y - prev.y) <= RAGE_RADIUS_PX;
+    if (chained) { run++; continue; }
+    if (run >= 3) d.insights.push({ kind: 'rage_click', at: clicks[i - run].t, detail: prev.label, count: run });
+    run = 1;
+  }
+  // Dead: no effect (mutation/nav/input) within 1s after the click; the
+  // session-final click is spared (leaving right after a click usually
+  // means an off-site navigation we can't see).
+  const sorted = [...effects].sort((a, b) => a - b);
+  for (const c of clicks) {
+    if (endTs - c.t < DEAD_CLICK_MS) continue;
+    const rescued = sorted.some((t) => t > c.t && t - c.t <= DEAD_CLICK_MS);
+    if (!rescued) d.insights.push({ kind: 'dead_click', at: c.t, detail: c.label });
+  }
+}
+
+function addNavInsights(d: SessionDigest) {
+  const navs = d.steps.filter((s): s is Extract<Step, { kind: 'nav' }> => s.kind === 'nav');
+  const roundTrips = new Map<string, number>();
+  for (let i = 2; i < navs.length; i++) {
+    const [a, b, c] = [navs[i - 2], navs[i - 1], navs[i]];
+    if (a.url === c.url && a.url !== b.url && c.t - a.t <= UTURN_MS) {
+      d.insights.push({ kind: 'uturn', at: c.t, detail: `${a.url} ↔ ${b.url}` });
+      const key = [a.url, b.url].sort().join('|');
+      roundTrips.set(key, (roundTrips.get(key) || 0) + 1);
+    }
+  }
+  for (const [key, n] of roundTrips) {
+    if (n >= 2) d.insights.push({ kind: 'pogo_stick', at: 0, detail: key.replace('|', ' ↔ '), count: n });
+  }
+}
+
+function addFormInsights(d: SessionDigest, clicks: ClickEvt[], fields: Map<string, number>, lastField: string, lastInputTs: number, endTs: number) {
+  if (fields.size === 0) return;
+  const submitted = clicks.some((c) => c.t >= lastInputTs &&
+    (c.tag === 'button' || SUBMIT_RE.test(c.label)));
+  const successNav = d.steps.some((s) => s.kind === 'nav' && s.t > lastInputTs && s.t - lastInputTs <= 60_000 && SUCCESS_URL_RE.test(s.url));
+  if (!submitted && !successNav) {
+    d.insights.push({ kind: 'form_abandon', at: Math.min(lastInputTs, endTs), detail: lastField });
+  }
+}
+
+// --- narrative ----------------------------------------------------------------
+
+function mss(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+export function renderNarrative(d: SessionDigest): string {
+  if (d.steps.length === 0) return 'No activity captured.';
+  const t0 = d.steps[0].t;
+  let navSeen = 0;
+  const lines = d.steps.map((s) => {
+    const at = mss(s.t - t0);
+    switch (s.kind) {
+      case 'nav': return `${at} ${++navSeen === 1 ? 'Landed on' : 'Went to'} ${s.url}`;
+      case 'click': return `${at} Clicked "${s.label}"`;
+      case 'input': return `${at} Typed in ${s.field}`;
+      case 'idle': return s.ms > 0 ? `${at} Idle for ${mss(s.ms)}` : `${at} …`;
+    }
+  });
+  return lines.join('\n');
+}

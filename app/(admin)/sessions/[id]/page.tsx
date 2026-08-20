@@ -6,9 +6,11 @@ import { markSessionViewed } from '@/lib/session-views';
 import { tagsForSessions } from '@/lib/session-tags';
 import { ReplayPlayer } from '@/components/replay-player';
 import { DeleteSessionButton } from '@/components/delete-session-button';
+import { SessionSummary } from '@/components/session-summary';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { TagColor } from '@/lib/tag-colors';
+import type { Insight } from '@/lib/session-digest';
 
 export default async function SessionReplayPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -26,6 +28,12 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
   // so reopening is a no-op.
   await markSessionViewed(id, session.email).catch(() => {});
   const tags = (await tagsForSessions([id])).get(id) ?? [];
+  const [summaryRow] = await db.select({
+    narrative: schema.sessionSummaries.narrative,
+    insights: schema.sessionSummaries.insights,
+    intentText: schema.sessionSummaries.intentText,
+    status: schema.sessionSummaries.status,
+  }).from(schema.sessionSummaries).where(eq(schema.sessionSummaries.sessionId, id)).limit(1);
 
   return (
     <main className="max-w-6xl mx-auto p-6 space-y-4">
@@ -48,6 +56,11 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
       <Card className="p-4">
         <ReplayPlayer sessionId={id} eventCount={s.eventCount} />
       </Card>
+      <SessionSummary
+        sessionId={id}
+        initial={summaryRow ? { ...summaryRow, insights: summaryRow.insights as Insight[] } : null}
+        llmEnabled={Boolean(process.env.SUMMARIZER_URL)}
+      />
     </main>
   );
 }

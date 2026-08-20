@@ -78,6 +78,8 @@ script tag.
 ## Features
 
 - 🎥 **Full session replay** via rrweb, with a live URL bar that follows the visitor across page loads and SPA route changes.
+- 📖 **Session narratives** — every session is auto-translated into a readable step-by-step story ("Landed on /home → clicked 'Pricing' → typed in the email field") with frustration badges: 🔥 rage clicks, 💀 dead clicks, 📝 abandoned forms, 🔁 pogo-sticking. Pure deterministic extraction — no AI required, works retroactively on existing sessions.
+- 🧠 **Optional AI intent summaries** — point `SUMMARIZER_URL` at the bundled self-hosted [summarizer service](summarizer/README.md) (llama.cpp + Qwen3.5-4B) and each session also gets a 2–3 sentence read on what the visitor wanted and where they got stuck. Session data never leaves your infrastructure.
 - 🗄️ **Bring your own Postgres** — events are gzipped and stored inline, no extra object store or volume.
 - 🔒 **Privacy modes** — mask all inputs, or strict masking of any element you tag.
 - 🏷️ **Admin-editable tag rules** — auto-tag sessions by URL match (e.g. "reached /signup") or visit count (e.g. "2nd+ session, same visitor"), each with its own color. Applies to existing sessions immediately.
@@ -116,6 +118,8 @@ The tracker uses a small **wire protocol** (kept stable for drop-in script tags)
 | `ORG_NAME` | – | Display name for the auto-created org/project (default `My Company`). |
 | `BLOB_DIR` | – | Directory for blob storage when not using inline DB storage. |
 | `APP_ORIGIN` | – | Public origin of the app (cookies etc). |
+| `SUMMARIZER_URL` | – | URL of the [summarizer service](summarizer/README.md) (OpenAI-compatible). Unset = AI intent summaries off; deterministic narratives still work. |
+| `SUMMARIZER_MODEL_LABEL` | – | Label stored with each AI summary (e.g. `qwen3.5-4b-q4km`), useful once you fine-tune. |
 
 \* Provide **either** `ADMIN_EMAIL`+`ADMIN_PASSWORD` **or** `ADMINS_CREDS`. Generate strong secrets with `openssl rand -base64 32`.
 
