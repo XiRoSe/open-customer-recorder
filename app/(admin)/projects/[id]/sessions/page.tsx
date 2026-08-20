@@ -6,6 +6,7 @@ import { readSessionCookie } from '@/lib/auth';
 import { viewedSessionIds } from '@/lib/session-views';
 import { tagsForSessions } from '@/lib/session-tags';
 import { summariesForSessions } from '@/lib/session-summaries';
+import { profilesForVisitors } from '@/lib/user-profiles';
 import { SummaryCell } from '@/components/summary-cell';
 import type { TagColor } from '@/lib/tag-colors';
 import { RefreshOnReturn } from '@/components/refresh-on-return';
@@ -111,6 +112,8 @@ export default async function SessionsPage(props: {
   const viewedByMe = await viewedSessionIds(rows.map((r) => r.id), session.email);
   const tagsBySession = await tagsForSessions(rows.map((r) => r.id));
   const summariesBySession = await summariesForSessions(rows.map((r) => r.id));
+  // When the list is filtered to one visitor, lead with who they are.
+  const visitorProfile = user ? (await profilesForVisitors(id, [user])).get(user) : undefined;
 
   const basePath = `/projects/${id}/sessions`;
   const clearUserHref = activeRange.value === '24h' ? basePath : `${basePath}?range=${activeRange.value}`;
@@ -140,6 +143,17 @@ export default async function SessionsPage(props: {
           <Link href="/settings" className="text-muted-foreground hover:underline">Settings</Link>
         </div>
       </div>
+
+      {user && visitorProfile?.profileText && (
+        <Card className="p-4">
+          <div className="rounded-md bg-muted/50 border-l-2 border-foreground/70 px-4 py-3">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
+              Visitor profile · from {visitorProfile.sessionsSummarized} summarized sessions
+            </div>
+            <p className="text-sm leading-relaxed max-w-4xl m-0">{visitorProfile.profileText}</p>
+          </div>
+        </Card>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <RangeTabs basePath={basePath} currentRange={activeRange.value} extraParams={{ user }} />
