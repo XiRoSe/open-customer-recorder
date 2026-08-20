@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db, schema } from '@/lib/db';
-import { and, eq, asc, desc, count, or, gt, notExists } from 'drizzle-orm';
+import { and, eq, asc, desc, count, or, gt, notExists, sql, getTableColumns } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { viewedSessionIds } from '@/lib/session-views';
 import { tagsForSessions } from '@/lib/session-tags';
@@ -97,7 +97,13 @@ export default async function SessionsPage(props: {
   const requestedPage = Math.max(1, parseInt(pageParam ?? '1', 10) || 1);
   const currentPage = Math.min(requestedPage, totalPages);
 
-  const rows = await db.select().from(schema.sessions).where(where).orderBy(orderExpr)
+  // "Ongoing" mirrors the summary sweeper's liveness rule exactly (no end
+  // beacon + activity within 10 min), so this column and the pipeline
+  // never disagree about whether a session is over.
+  const rows = await db.select({
+    ...getTableColumns(schema.sessions),
+    ongoing: sql<boolean>`(${schema.sessions.endedAt} IS NULL AND ${schema.sessions.lastActivityAt} > now() - interval '10 minutes')`,
+  }).from(schema.sessions).where(where).orderBy(orderExpr)
     .limit(PAGE_SIZE).offset((currentPage - 1) * PAGE_SIZE);
 
   // Which of the rows shown has the current admin already viewed?
@@ -144,6 +150,7 @@ export default async function SessionsPage(props: {
           <TableHeader>
             <TableRow>
               <SortableHead href={colHref('when')} active={sort.column === 'when'} dir={sort.dir}>When</SortableHead>
+              <TableHead>State</TableHead>
               <TableHead>User</TableHead>
               <TableHead>Tags</TableHead>
               <TableHead>Summary</TableHead>
@@ -156,7 +163,7 @@ export default async function SessionsPage(props: {
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                 {activeRange.hours !== null
                   ? <>No sessions in the last {activeRange.label}. <Link href={showAllTimeHref} className="underline">Show all time</Link>.</>
                   : 'No sessions yet.'}
@@ -182,6 +189,19 @@ export default async function SessionsPage(props: {
                     />
                     {new Date(s.startedAt).toLocaleString('en-GB')}
                   </Link>
+                </TableCell>
+                <TableCell>
+                  {s.ongoing ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                      </span>
+                      Ongoing
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Done</span>
+                  )}
                 </TableCell>
                 <TableCell className={unread ? 'font-semibold' : undefined}>
                   {s.email || s.userId || <span className="text-muted-foreground font-normal">Anonymous {s.anonId.slice(0, 8)}</span>}
