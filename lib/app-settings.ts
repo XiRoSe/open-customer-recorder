@@ -1,4 +1,4 @@
-import { db, schema } from '@/lib/db';
+﻿import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 export interface AppSettings {
@@ -6,6 +6,7 @@ export interface AppSettings {
   intentEnabled: boolean;
   visualEnabled: boolean;
   profilesEnabled: boolean;
+  clusteringEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -13,6 +14,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   intentEnabled: true,
   visualEnabled: true,
   profilesEnabled: true,
+  clusteringEnabled: true,
 };
 
 /** Settings for the given org, or for the singleton org when omitted
@@ -32,6 +34,7 @@ export async function getAppSettings(orgId?: string): Promise<AppSettings> {
     intentEnabled: row.intentEnabled,
     visualEnabled: row.visualEnabled,
     profilesEnabled: row.profilesEnabled,
+    clusteringEnabled: row.clusteringEnabled,
   };
 }
 
@@ -46,3 +49,4 @@ export async function updateAppSettings(orgId: string, patch: Partial<AppSetting
     });
   return next;
 }
+

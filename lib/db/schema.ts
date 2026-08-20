@@ -157,6 +157,7 @@ export const appSettings = pgTable('app_settings', {
   intentEnabled: boolean('intent_enabled').notNull().default(true),
   visualEnabled: boolean('visual_enabled').notNull().default(true),
   profilesEnabled: boolean('profiles_enabled').notNull().default(true),
+  clusteringEnabled: boolean('clustering_enabled').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -171,6 +172,7 @@ export const userProfiles = pgTable('user_profiles', {
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   visitorKey: text('visitor_key').notNull(),
   profileText: text('profile_text'),
+  segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
   sessionsSummarized: integer('sessions_summarized').notNull().default(0),
   status: text('status').notNull().default('pending'), // pending | processing | done | failed
   attempts: integer('attempts').notNull().default(0),
@@ -180,6 +182,21 @@ export const userProfiles = pgTable('user_profiles', {
 }, (t) => ({
   projectVisitorIdx: uniqueIndex('user_profiles_project_visitor_idx').on(t.projectId, t.visitorKey),
   statusIdx: index('user_profiles_status_idx').on(t.status, t.nextRetryAt),
+}));
+
+// Behavioral segments discovered by clustering visitor-profile embeddings
+// (k-means over MiniLM vectors, k picked by silhouette; named by the
+// summarizer LLM). Rebuilt whenever profiles change — each run replaces
+// the project's segments wholesale, so rows are cheap and disposable.
+export const userSegments = pgTable('user_segments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  size: integer('size').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  projectIdx: index('user_segments_project_idx').on(t.projectId),
 }));
 
 export const sessionLinks = pgTable('session_links', {

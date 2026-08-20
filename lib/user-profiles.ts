@@ -159,7 +159,7 @@ export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<
   return done;
 }
 
-export interface VisitorProfile { profileText: string | null; status: string; sessionsSummarized: number }
+export interface VisitorProfile { profileText: string | null; status: string; sessionsSummarized: number; segmentId: string | null }
 
 /** Profiles for the Users page, keyed by visitorKey. */
 export async function profilesForVisitors(projectId: string, keys: string[]): Promise<Map<string, VisitorProfile>> {
@@ -169,7 +169,8 @@ export async function profilesForVisitors(projectId: string, keys: string[]): Pr
     profileText: schema.userProfiles.profileText,
     status: schema.userProfiles.status,
     sessionsSummarized: schema.userProfiles.sessionsSummarized,
+    segmentId: schema.userProfiles.segmentId,
   }).from(schema.userProfiles)
     .where(and(eq(schema.userProfiles.projectId, projectId), inArray(schema.userProfiles.visitorKey, keys)));
-  return new Map(rows.map((r) => [r.visitorKey, { profileText: r.profileText, status: r.status, sessionsSummarized: r.sessionsSummarized }]));
+  return new Map(rows.map((r) => [r.visitorKey, { profileText: r.profileText, status: r.status, sessionsSummarized: r.sessionsSummarized, segmentId: r.segmentId }]));
 }

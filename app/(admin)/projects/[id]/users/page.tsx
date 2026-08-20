@@ -11,7 +11,9 @@ import { excludedAnonIdsAmong } from '@/lib/excluded-users';
 import { SortableHead } from '@/components/sortable-head';
 import { resolveSort, sortHref, type SortDir } from '@/lib/table-sort';
 import { profilesForVisitors } from '@/lib/user-profiles';
+import { segmentsForProject } from '@/lib/user-segments';
 import { SummaryCell } from '@/components/summary-cell';
+import { Badge } from '@/components/ui/badge';
 
 const SORT_COLUMNS = ['sessions', 'time', 'lastSeen', 'country', 'browser'] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -92,6 +94,8 @@ export default async function UsersPage(props: {
 
   const excludedAnonIds = await excludedAnonIdsAmong(id, rows.map((r) => r.anonId));
   const profilesByKey = await profilesForVisitors(id, rows.map((r) => r.key));
+  const segments = await segmentsForProject(id);
+  const segmentById = new Map(segments.map((s) => [s.id, s]));
 
   const basePath = `/projects/${id}/users`;
   const sessionsHrefBase = `/projects/${id}/sessions`;
@@ -123,6 +127,21 @@ export default async function UsersPage(props: {
         </div>
       </div>
 
+      {segments.length > 0 && (
+        <Card className="p-4">
+          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Visitor segments</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
+            {segments.map((seg) => (
+              <div key={seg.id} className="text-sm">
+                <span className="font-medium">{seg.name}</span>
+                <span className="text-muted-foreground"> · {seg.size} {seg.size === 1 ? 'visitor' : 'visitors'}</span>
+                {seg.description && <div className="text-xs text-muted-foreground">{seg.description}</div>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <RangeTabs basePath={basePath} currentRange={activeRange.value} />
 
       <Card>
@@ -130,6 +149,7 @@ export default async function UsersPage(props: {
           <TableHeader>
             <TableRow>
               <TableHead>User</TableHead>
+              <TableHead>Segment</TableHead>
               <TableHead>Profile</TableHead>
               <SortableHead href={colHref('sessions')} active={sort.column === 'sessions'} dir={sort.dir}>Sessions</SortableHead>
               <SortableHead href={colHref('time')} active={sort.column === 'time'} dir={sort.dir}>Total time</SortableHead>
@@ -141,7 +161,7 @@ export default async function UsersPage(props: {
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                 {activeRange.hours !== null
                   ? <>No users active in the last {activeRange.label}. <Link href={`${basePath}?range=all`} className="underline">Show all time</Link>.</>
                   : 'No users yet.'}
@@ -155,6 +175,15 @@ export default async function UsersPage(props: {
                       <span className="text-muted-foreground">Anonymous {u.anonId.slice(0, 8)}</span>
                     )}
                   </Link>
+                </TableCell>
+                <TableCell>
+                  {(() => {
+                    const segId = profilesByKey.get(u.key)?.segmentId;
+                    const seg = segId ? segmentById.get(segId) : undefined;
+                    return seg
+                      ? <Badge variant="secondary" title={seg.description}>{seg.name}</Badge>
+                      : <span className="text-muted-foreground text-xs">—</span>;
+                  })()}
                 </TableCell>
                 <TableCell>
                   <SummaryCell text={profilesByKey.get(u.key)?.profileText ?? null} />

@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+﻿import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GET, PUT } from './route';
 import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { signSessionJwt } from '@/lib/auth';
 
-// Next 16's cookies() throws outside a request scope in vitest — back it
+// Next 16's cookies() throws outside a request scope in vitest - back it
 // with a test-controlled store (same pattern as the summary route tests).
 let cookieStore: Record<string, string> = {};
 vi.mock('next/headers', () => ({
@@ -28,7 +28,7 @@ describe.skipIf(!dbReady)('GET/PUT /api/admin/settings', () => {
 
     let res = await GET();
     expect(res.status).toBe(200);
-    expect((await res.json()).settings).toEqual({ summariesEnabled: true, intentEnabled: true, visualEnabled: true, profilesEnabled: true });
+    expect((await res.json()).settings).toEqual({ summariesEnabled: true, intentEnabled: true, visualEnabled: true, profilesEnabled: true, clusteringEnabled: true });
 
     res = await PUT(new Request('http://localhost/api/admin/settings', {
       method: 'PUT', body: JSON.stringify({ visualEnabled: false, junk: 'ignored' }),
@@ -53,3 +53,4 @@ describe.skipIf(!dbReady)('GET/PUT /api/admin/settings', () => {
     expect((await GET()).status).toBe(401);
   });
 });
+

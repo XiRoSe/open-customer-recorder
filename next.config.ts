@@ -4,9 +4,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // playwright-core has runtime-loaded JSON (browsers.json) and native
   // bindings that Next's output tracer can't statically discover, so it
-  // ships an incomplete copy. Mark it external so it's required from
-  // node_modules at runtime instead of bundled.
-  serverExternalPackages: ['playwright-core'],
+  // ships an incomplete copy. Same for @huggingface/transformers, whose
+  // onnxruntime-node dependency carries native binaries. Mark them
+  // external so they're required from node_modules at runtime.
+  serverExternalPackages: ['playwright-core', '@huggingface/transformers'],
   async headers() {
     return [
       {

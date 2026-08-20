@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { readSessionCookie } from '@/lib/auth';
 import { getAppSettings, updateAppSettings, type AppSettings } from '@/lib/app-settings';
 
@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest | Request) {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
   const patch: Partial<AppSettings> = {};
-  for (const key of ['summariesEnabled', 'intentEnabled', 'visualEnabled', 'profilesEnabled'] as const) {
+  for (const key of ['summariesEnabled', 'intentEnabled', 'visualEnabled', 'profilesEnabled', 'clusteringEnabled'] as const) {
     if (typeof body[key] === 'boolean') patch[key] = body[key];
   }
   if (Object.keys(patch).length === 0) {
@@ -27,3 +27,4 @@ export async function PUT(req: NextRequest | Request) {
   const settings = await updateAppSettings(session.orgId, patch);
   return NextResponse.json({ settings });
 }
+
