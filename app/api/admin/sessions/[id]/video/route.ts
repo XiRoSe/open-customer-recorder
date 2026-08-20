@@ -14,71 +14,16 @@ import { readSessionCookie } from '@/lib/auth';
 import { gunzipSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { buildReplayHtml } from '@/lib/replay-html';
 
 export const runtime = 'nodejs';
 
 const VIDEO_W = 1280;
 const VIDEO_H = 720;
 const MAX_RENDER_MS = 30 * 60 * 1000; // 30 min cap
-
-// Inline rrweb-player rather than load from a CDN — jsdelivr serves
-// .cjs files with Content-Type: application/node, which browsers
-// refuse to execute as JavaScript. <script src=cdn> ends up with
-// window.rrwebPlayer === undefined. Reading the umd file from local
-// node_modules and embedding it directly sidesteps the MIME issue.
-const PLAYER_JS = readFileSync(
-  join(process.cwd(), 'node_modules/rrweb-player/dist/rrweb-player.umd.cjs'),
-  'utf8',
-);
-const PLAYER_CSS = readFileSync(
-  join(process.cwd(), 'node_modules/rrweb-player/dist/style.min.css'),
-  'utf8',
-);
-
-function buildReplayHtml(events: unknown[], width: number, height: number): string {
-  const eventsJson = JSON.stringify(events).replace(/<\/(script)/gi, '<\\/$1');
-  return `<!doctype html>
-<html><head>
-<meta charset="utf-8">
-<style>${PLAYER_CSS}</style>
-<style>
-  html,body{margin:0;padding:0;background:#fff;width:100%;height:100%;overflow:hidden;}
-  #player,#player>div,.rr-player,.replayer-wrapper{width:100%!important;height:100%!important;}
-  .rr-controller{display:none!important;}
-</style>
-</head><body>
-<div id="player"></div>
-<script id="events" type="application/json">${eventsJson}</script>
-<script>${PLAYER_JS}</script>
-<script>
-window.__replayDone = false;
-window.__replayError = null;
-try {
-  var events = JSON.parse(document.getElementById('events').textContent);
-  var Player = (window.rrwebPlayer && window.rrwebPlayer.default) || window.rrwebPlayer;
-  if (!Player) throw new Error('rrweb-player did not load');
-  var p = new Player({
-    target: document.getElementById('player'),
-    props: {
-      events: events,
-      autoPlay: true,
-      showController: false,
-      skipInactive: false,
-      width: ${width},
-      height: ${height},
-    }
-  });
-  p.addEventListener('finish', function () { window.__replayDone = true; });
-} catch (e) {
-  window.__replayError = String(e && e.message || e);
-}
-</script>
-</body></html>`;
-}
 
 export async function GET(_req: NextRequest | Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await readSessionCookie();

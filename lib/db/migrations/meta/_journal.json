@@ -71,6 +71,13 @@
       "when": 1787193787358,
       "tag": "0009_light_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787211835164,
+      "tag": "0010_moaning_moira_mactaggert",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@
 import postgres from 'postgres';
 
 // Keep byte-identical to lib/summary-worker.ts — training must match inference.
-const SYSTEM_PROMPT = `You analyze a website visitor's session digest (JSON: steps the visitor took, frustration signals, timing stats).
+const SYSTEM_PROMPT = `You analyze a website visitor's session digest (JSON: steps the visitor took, frustration signals, timing stats). Screenshots of key replay moments may be attached - mention visible layout or content problems only if they are clearly relevant.
 Write 2-3 plain sentences: what the visitor was likely trying to do, and any friction they hit.
 Only state what the data supports. No markdown, no preamble, no bullet points.`;
 

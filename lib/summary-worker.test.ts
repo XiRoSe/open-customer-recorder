@@ -77,6 +77,79 @@ describe.skipIf(!dbReady)('drainSummaryQueue', () => {
   });
 });
 
+// A digest with steps + an insight so pickFrameMoments yields moments, and
+// a session with a real (gzipped) blob so the frame path engages.
+const T0 = 1_700_000_000_000;
+const VISUAL_DIGEST = {
+  steps: [
+    { t: T0, kind: 'nav', url: 'https://x.test/' },
+    { t: T0 + 60_000, kind: 'click', label: 'Go', tag: 'button' },
+  ],
+  insights: [{ kind: 'dead_click', at: T0 + 10_000 }],
+  stats: { durationMs: 60_000, activeMs: 60_000, pages: [], clickCount: 1, inputFieldCount: 0 },
+};
+
+async function seedVisualPending() {
+  const { gzipSync } = await import('node:zlib');
+  const { project } = await createOrgWithProject();
+  const blob = gzipSync(Buffer.from(JSON.stringify({ type: 4, timestamp: T0, data: { href: 'https://x.test/' } }) + '\n'));
+  const [s] = await db.insert(schema.sessions).values({
+    projectId: project.id, anonId: 'vis', startedAt: new Date(T0), endedAt: new Date(), eventCount: 1,
+    blobPath: '', blobBytes: blob.length, blobData: blob,
+  }).returning();
+  const [row] = await db.insert(schema.sessionSummaries).values({
+    sessionId: s.id, digest: VISUAL_DIGEST, digestVersion: 1,
+    narrative: '0:00 Landed on /', insights: VISUAL_DIGEST.insights, status: 'pending',
+  }).returning();
+  return row;
+}
+
+describe.skipIf(!dbReady)('drainSummaryQueue visual analysis', () => {
+  it('attaches rendered frames as image_url parts when visualEnabled', async () => {
+    await seedVisualPending();
+    const fakeRenderer = vi.fn(async () => ['FAKEB64A', 'FAKEB64B']);
+    const fetchFn = vi.fn(async () => okResponse());
+    expect(await drainSummaryQueue(fetchFn as unknown as typeof fetch, fakeRenderer)).toBe(1);
+    expect(fakeRenderer).toHaveBeenCalledWith(expect.any(String), [10_000, 60_000]);
+    const body = JSON.parse(String(((fetchFn.mock.calls[0] as unknown[])[1] as { body: string }).body));
+    const parts = body.messages[1].content;
+    expect(parts.filter((p: { type: string }) => p.type === 'image_url')).toHaveLength(2);
+    expect(parts[1].image_url.url).toBe('data:image/jpeg;base64,FAKEB64A');
+  });
+
+  it('sends text-only when visualEnabled is off', async () => {
+    const { updateAppSettings } = await import('./app-settings');
+    await seedVisualPending();
+    const [org] = await db.select().from(schema.organizations).limit(1);
+    await updateAppSettings(org.id, { visualEnabled: false });
+    const fakeRenderer = vi.fn(async () => ['FAKEB64A']);
+    const fetchFn = vi.fn(async () => okResponse());
+    expect(await drainSummaryQueue(fetchFn as unknown as typeof fetch, fakeRenderer)).toBe(1);
+    expect(fakeRenderer).not.toHaveBeenCalled();
+    const body = JSON.parse(String(((fetchFn.mock.calls[0] as unknown[])[1] as { body: string }).body));
+    expect(body.messages[1].content).toHaveLength(1);
+  });
+
+  it('is a no-op when intentEnabled is off', async () => {
+    const { updateAppSettings } = await import('./app-settings');
+    await seedVisualPending();
+    const [org] = await db.select().from(schema.organizations).limit(1);
+    await updateAppSettings(org.id, { intentEnabled: false });
+    const fetchFn = vi.fn();
+    expect(await drainSummaryQueue(fetchFn as unknown as typeof fetch)).toBe(0);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('falls back to text-only when the frame renderer throws', async () => {
+    await seedVisualPending();
+    const fakeRenderer = vi.fn(async () => { throw new Error('chromium unavailable'); });
+    const fetchFn = vi.fn(async () => okResponse());
+    expect(await drainSummaryQueue(fetchFn as unknown as typeof fetch, fakeRenderer)).toBe(1);
+    const body = JSON.parse(String(((fetchFn.mock.calls[0] as unknown[])[1] as { body: string }).body));
+    expect(body.messages[1].content).toHaveLength(1);
+  });
+});
+
 describe.skipIf(!dbReady)('drainSummaryQueue ordering', () => {
   it('drains newest rows first so fresh sessions beat the backfill', async () => {
     const { project } = await createOrgWithProject();

@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { and, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { DIGEST_VERSION, extractDigest, renderNarrative } from './session-digest';
+import { getAppSettings } from './app-settings';
 
 export const SUMMARY_BATCH = 50;
 // A session with no end beacon counts as over after 10 min of silence
@@ -12,6 +13,8 @@ const ABANDONED_AFTER_MS = 10 * 60 * 1000;
  * digestVersion). Never throws for a single bad session — that session
  * gets a failed row and the sweep moves on. Returns rows written. */
 export async function runSummarySweepOnce(): Promise<number> {
+  const { summariesEnabled } = await getAppSettings();
+  if (!summariesEnabled) return 0;
   const cutoff = new Date(Date.now() - ABANDONED_AFTER_MS);
   const candidates = await db
     .select({ id: schema.sessions.id, blobData: schema.sessions.blobData })

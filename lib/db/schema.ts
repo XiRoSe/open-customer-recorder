@@ -142,6 +142,18 @@ export const sessionSummaries = pgTable('session_summaries', {
   statusIdx: index('session_summaries_status_idx').on(t.status, t.nextRetryAt),
 }));
 
+// Admin feature toggles, one row per org (single-org product today).
+// Missing row = all defaults (everything enabled). SUMMARIZER_URL unset
+// still hard-disables the LLM layer regardless of these flags.
+export const appSettings = pgTable('app_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().unique().references(() => organizations.id, { onDelete: 'cascade' }),
+  summariesEnabled: boolean('summaries_enabled').notNull().default(true),
+  intentEnabled: boolean('intent_enabled').notNull().default(true),
+  visualEnabled: boolean('visual_enabled').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const sessionLinks = pgTable('session_links', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: uuid('session_id').notNull().references(() => sessions.id, { onDelete: 'cascade' }),
