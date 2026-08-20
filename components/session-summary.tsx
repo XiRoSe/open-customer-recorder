@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import type { Insight, Step } from '@/lib/session-digest';
 import { INSIGHT_META } from '@/lib/insight-meta';
 
@@ -96,7 +95,6 @@ export function SessionSummary({ sessionId, initial, llmEnabled }: {
   sessionId: string; initial: SummaryData | null; llmEnabled: boolean;
 }) {
   const [data, setData] = useState(initial);
-  const [busy, setBusy] = useState(false);
   const waiting = llmEnabled && (!data || data.status === 'pending' || data.status === 'processing');
 
   // Poll while the digest or intent is still being generated.
@@ -109,13 +107,6 @@ export function SessionSummary({ sessionId, initial, llmEnabled }: {
     return () => clearInterval(t);
   }, [sessionId, waiting, data]);
 
-  const regenerate = async () => {
-    setBusy(true);
-    await fetch(`/api/admin/sessions/${sessionId}/summary`, { method: 'POST' });
-    setData((d) => (d ? { ...d, status: 'pending' } : d));
-    setBusy(false);
-  };
-
   if (!data) {
     return <Card className="p-4 text-sm text-muted-foreground">Summary is being generated…</Card>;
   }
@@ -125,7 +116,7 @@ export function SessionSummary({ sessionId, initial, llmEnabled }: {
 
   return (
     <Card className="p-0 overflow-hidden">
-      {/* Header: title, provenance + signal chips, regenerate */}
+      {/* Header: title, provenance + signal chips */}
       <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
         <div className="min-w-0">
           <h2 className="font-semibold">Session analysis</h2>
@@ -152,11 +143,6 @@ export function SessionSummary({ sessionId, initial, llmEnabled }: {
             ))}
           </div>
         </div>
-        {llmEnabled && (
-          <Button variant="outline" size="sm" onClick={regenerate} disabled={busy || waiting}>
-            {waiting ? 'Generating…' : 'Regenerate'}
-          </Button>
-        )}
       </div>
 
       {/* Summary: emphasized reading block */}

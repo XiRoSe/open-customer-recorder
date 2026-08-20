@@ -5,9 +5,12 @@ import { DIGEST_VERSION, extractDigest, renderNarrative } from './session-digest
 import { getAppSettings } from './app-settings';
 
 export const SUMMARY_BATCH = 50;
-// A session with no end beacon counts as over after 10 min of silence
-// (2× the tracker's 5-min inactivity timeout).
-const ABANDONED_AFTER_MS = 10 * 60 * 1000;
+// A session with no end beacon counts as over after 6 min of silence:
+// the tracker's resume window is 5 min (SESSION_TTL_MS), so after that
+// the browser can never continue this session — +1 min slack for clock
+// skew and in-flight batches. Keep in lockstep with the State column's
+// SQL interval in app/(admin)/projects/[id]/sessions/page.tsx.
+const ABANDONED_AFTER_MS = 6 * 60 * 1000;
 
 /** Digest every "over" session that has no summary row yet (or a stale
  * digestVersion). Never throws for a single bad session — that session

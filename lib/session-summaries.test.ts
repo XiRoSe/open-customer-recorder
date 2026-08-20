@@ -45,9 +45,9 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     expect(await runSummarySweepOnce()).toBe(0);
   });
 
-  it('sweeps abandoned sessions (no endedAt but idle >10 min)', async () => {
+  it('sweeps abandoned sessions (no endedAt but idle past the 6-min resume window)', async () => {
     const { project } = await createOrgWithProject();
-    const old = new Date(Date.now() - 11 * 60 * 1000);
+    const old = new Date(Date.now() - 7 * 60 * 1000);
     await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'gone', startedAt: old, lastActivityAt: old,
       eventCount: 3, blobPath: '', blobData: makeBlob(),

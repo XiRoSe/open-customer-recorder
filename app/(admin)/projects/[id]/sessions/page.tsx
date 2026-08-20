@@ -98,11 +98,12 @@ export default async function SessionsPage(props: {
   const currentPage = Math.min(requestedPage, totalPages);
 
   // "Ongoing" mirrors the summary sweeper's liveness rule exactly (no end
-  // beacon + activity within 10 min), so this column and the pipeline
+  // beacon + activity within 6 min — the tracker's 5-min resume TTL plus
+  // slack; see ABANDONED_AFTER_MS), so this column and the pipeline
   // never disagree about whether a session is over.
   const rows = await db.select({
     ...getTableColumns(schema.sessions),
-    ongoing: sql<boolean>`(${schema.sessions.endedAt} IS NULL AND ${schema.sessions.lastActivityAt} > now() - interval '10 minutes')`,
+    ongoing: sql<boolean>`(${schema.sessions.endedAt} IS NULL AND ${schema.sessions.lastActivityAt} > now() - interval '6 minutes')`,
   }).from(schema.sessions).where(where).orderBy(orderExpr)
     .limit(PAGE_SIZE).offset((currentPage - 1) * PAGE_SIZE);
 
