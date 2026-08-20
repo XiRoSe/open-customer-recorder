@@ -224,7 +224,8 @@ function elide(steps: Step[]): Step[] {
   if (steps.length <= MAX_STEPS) return steps;
   const head = steps.slice(0, MAX_STEPS - 10);
   const tail = steps.slice(-9);
-  return [...head, { t: tail[0].t, kind: 'idle', ms: 0 }, ...tail].slice(0, MAX_STEPS);
+  const marker: Step = { t: tail[0].t, kind: 'idle', ms: 0 };
+  return [...head, marker, ...tail].slice(0, MAX_STEPS);
 }
 
 // --- heuristic insight passes ------------------------------------------------
