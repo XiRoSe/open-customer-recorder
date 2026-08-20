@@ -19,4 +19,28 @@ export async function register() {
   setInterval(() => {
     cleanupZeroEventSessions().catch((e) => console.warn('[cleanup] interval run failed', e));
   }, 5 * 60 * 1000);
+
+  const { runSummarySweepOnce } = await import('./lib/session-summaries');
+  const { drainSummaryQueue, resetStuckProcessing } = await import('./lib/summary-worker');
+
+  // Session narratives: digest ended sessions, then drain the LLM queue in
+  // one burst (keeps the app-sleeping summarizer awake only once per cycle).
+  // The inFlight flag stops cycles from stacking when a burst outlives the
+  // interval (CPU inference is 15-30s per summary).
+  let summaryInFlight = false;
+  const summaryCycle = async () => {
+    if (summaryInFlight) return;
+    summaryInFlight = true;
+    try {
+      await resetStuckProcessing();
+      await runSummarySweepOnce();
+      await drainSummaryQueue();
+    } catch (e) {
+      console.warn('[summaries] cycle failed', e);
+    } finally {
+      summaryInFlight = false;
+    }
+  };
+  summaryCycle(); // boot run backfills existing history batch by batch
+  setInterval(summaryCycle, 60 * 1000);
 }
