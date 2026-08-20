@@ -78,7 +78,7 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
           ...((summaryRow?.digest as { stats?: { viewport?: string } } | null)?.stats?.viewport
             ? [{ label: 'Viewport', value: (summaryRow!.digest as { stats: { viewport: string } }).stats.viewport }] : []),
           { label: 'Started', value: new Date(s.startedAt).toLocaleString('en-GB') },
-          ...(s.durationMs ? [{ label: 'Duration', value: `${Math.floor(s.durationMs / 60000)}m ${Math.round((s.durationMs % 60000) / 1000)}s` }] : []),
+          ...(s.durationMs ? [{ label: 'Duration', value: (() => { const t = Math.round(s.durationMs! / 1000); return `${Math.floor(t / 60)}m ${t % 60}s`; })() }] : []),
           { label: 'Pages', value: String(s.pageCount) },
           { label: 'Events', value: String(s.eventCount) },
         ]}
