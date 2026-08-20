@@ -3,10 +3,8 @@ import Link from 'next/link';
 import { db, schema } from '@/lib/db';
 import { and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
-import { getAppSettings } from '@/lib/app-settings';
 import { segmentsForProject, clusterMapForProject, MIN_PROFILES_TO_CLUSTER } from '@/lib/user-segments';
 import { ClusterMap } from '@/components/cluster-map';
-import { SettingsToggles } from '@/components/settings-toggles';
 import { Card } from '@/components/ui/card';
 
 export default async function ClustersPage(props: { params: Promise<{ id: string }> }) {
@@ -17,10 +15,9 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
     .where(and(eq(schema.projects.id, id), eq(schema.projects.orgId, session.orgId)));
   if (!project) redirect('/projects');
 
-  const [segments, points, settings] = await Promise.all([
+  const [segments, points] = await Promise.all([
     segmentsForProject(id),
     clusterMapForProject(id),
-    getAppSettings(session.orgId),
   ]);
 
   return (
@@ -41,7 +38,7 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
           <span className="text-muted-foreground">·</span>
-          <Link href="/settings" className="text-muted-foreground hover:underline">Settings</Link>
+          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
         </div>
       </div>
 
@@ -55,11 +52,6 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
           have AI profiles (a profile needs 2+ summarized sessions) — reclustering runs every few minutes.
         </Card>
       )}
-
-      <div>
-        <h2 className="font-semibold mb-2">Clustering settings</h2>
-        <SettingsToggles initial={settings} only={['profilesEnabled', 'clusteringEnabled']} />
-      </div>
     </main>
   );
 }

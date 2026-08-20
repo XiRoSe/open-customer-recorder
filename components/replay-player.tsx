@@ -2,12 +2,18 @@
 import { useEffect, useRef, useState } from 'react';
 import type rrwebPlayer from 'rrweb-player';
 import 'rrweb-player/dist/style.css';
-import { Download, Globe, Loader2 } from 'lucide-react';
+import { Download, Globe, Loader2, User } from 'lucide-react';
 import { buildUrlTimeline, urlAtTime, type UrlTimelineEntry } from '@/lib/url-timeline';
 
-interface Props { sessionId: string; eventCount: number }
+interface Props {
+  sessionId: string;
+  eventCount: number;
+  /** Link to the visitor's filtered sessions list — renders a
+   * "More from this user" button beside Download. */
+  userHref?: string;
+}
 
-export function ReplayPlayer({ sessionId, eventCount }: Props) {
+export function ReplayPlayer({ sessionId, eventCount, userHref }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [renderingMp4, setRenderingMp4] = useState(false);
@@ -122,6 +128,15 @@ export function ReplayPlayer({ sessionId, eventCount }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end gap-3">
+        {userHref && (
+          <a
+            href={userHref}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            <User className="h-4 w-4" />
+            More from this user
+          </a>
+        )}
         <button
           type="button"
           onClick={downloadMp4}

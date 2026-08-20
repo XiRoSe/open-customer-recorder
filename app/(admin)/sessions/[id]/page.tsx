@@ -56,7 +56,11 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
         <DeleteSessionButton sessionId={id} redirectTo={`/projects/${p.id}/sessions`} />
       </div>
       <Card className="p-4">
-        <ReplayPlayer sessionId={id} eventCount={s.eventCount} />
+        <ReplayPlayer
+          sessionId={id}
+          eventCount={s.eventCount}
+          userHref={`/projects/${p.id}/sessions?user=${encodeURIComponent(s.userId ?? s.anonId)}&range=all`}
+        />
       </Card>
       <SessionSummary
         sessionId={id}

@@ -10,6 +10,7 @@ import { ExcludeUserButton } from '@/components/exclude-user-button';
 import { excludedAnonIdsAmong } from '@/lib/excluded-users';
 import { SortableHead } from '@/components/sortable-head';
 import { resolveSort, sortHref, type SortDir } from '@/lib/table-sort';
+import { Pagination } from '@/components/pagination';
 import { profilesForVisitors } from '@/lib/user-profiles';
 import { segmentsForProject } from '@/lib/user-segments';
 import { SummaryCell } from '@/components/summary-cell';
@@ -30,12 +31,14 @@ function fmtDuration(ms: number | null) {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+const PAGE_SIZE = 50;
+
 export default async function UsersPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ range?: string; sort?: string; dir?: string; page?: string }>;
 }) {
   const { id } = await props.params;
-  const { range: rangeParam, sort: sortParam, dir: dirParam } = await props.searchParams;
+  const { range: rangeParam, sort: sortParam, dir: dirParam, page: pageParam } = await props.searchParams;
   const session = await readSessionCookie();
   if (!session) redirect('/login');
 
@@ -73,6 +76,16 @@ export default async function UsersPage(props: {
   };
   const orderExpr = sort.dir === 'asc' ? asc(SORT_EXPR[sort.column]) : desc(SORT_EXPR[sort.column]);
 
+  // Distinct-visitor total first: it clamps an out-of-range ?page= (same
+  // pattern as the sessions list).
+  const [{ value: totalUsers }] = await db
+    .select({ value: sql<number>`count(distinct coalesce(${schema.sessions.userId}, ${schema.sessions.anonId}))::int` })
+    .from(schema.sessions)
+    .where(and(...filters));
+  const totalPages = Math.max(1, Math.ceil(totalUsers / PAGE_SIZE));
+  const requestedPage = Math.max(1, parseInt(pageParam ?? '1', 10) || 1);
+  const currentPage = Math.min(requestedPage, totalPages);
+
   const rows = await db
     .select({
       key: sql<string>`coalesce(${schema.sessions.userId}, ${schema.sessions.anonId})`,
@@ -90,7 +103,8 @@ export default async function UsersPage(props: {
     .where(and(...filters))
     .groupBy(sql`coalesce(${schema.sessions.userId}, ${schema.sessions.anonId})`, schema.sessions.anonId, schema.sessions.userId)
     .orderBy(orderExpr)
-    .limit(100);
+    .limit(PAGE_SIZE)
+    .offset((currentPage - 1) * PAGE_SIZE);
 
   const excludedAnonIds = await excludedAnonIdsAmong(id, rows.map((r) => r.anonId));
   const profilesByKey = await profilesForVisitors(id, rows.map((r) => r.key));
@@ -112,7 +126,7 @@ export default async function UsersPage(props: {
         <div>
           <h1 className="text-2xl font-semibold">{project.name} Users</h1>
           <p className="text-sm text-muted-foreground">
-            {rows.length.toLocaleString()} {rows.length === 1 ? 'user' : 'users'}
+            {totalUsers.toLocaleString()} {totalUsers === 1 ? 'user' : 'users'}
             {activeRange.hours !== null ? <> active in the last {activeRange.label}</> : null}
           </p>
         </div>
@@ -125,24 +139,9 @@ export default async function UsersPage(props: {
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
           <span className="text-muted-foreground">·</span>
-          <Link href="/settings" className="text-muted-foreground hover:underline">Settings</Link>
+          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
         </div>
       </div>
-
-      {segments.length > 0 && (
-        <Card className="p-4">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Visitor segments</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
-            {segments.map((seg) => (
-              <div key={seg.id} className="text-sm">
-                <span className="font-medium">{seg.name}</span>
-                <span className="text-muted-foreground"> · {seg.size} {seg.size === 1 ? 'visitor' : 'visitors'}</span>
-                {seg.description && <div className="text-xs text-muted-foreground">{seg.description}</div>}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
 
       <RangeTabs basePath={basePath} currentRange={activeRange.value} />
 
@@ -184,7 +183,12 @@ export default async function UsersPage(props: {
                     const seg = segId ? segmentById.get(segId) : undefined;
                     return seg
                       ? <Badge variant="secondary" title={seg.description}>{seg.name}</Badge>
-                      : <span className="text-muted-foreground text-xs">—</span>;
+                      : (
+                        <span
+                          className="text-muted-foreground text-xs cursor-help"
+                          title="Segments come from AI profiles, and a profile needs 2+ summarized sessions from this visitor."
+                        >—</span>
+                      );
                   })()}
                 </TableCell>
                 <TableCell>
@@ -203,6 +207,13 @@ export default async function UsersPage(props: {
           </TableBody>
         </Table>
       </Card>
+
+      <Pagination
+        basePath={basePath}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        extraParams={{ range: rangeParam, sort: sortParam, dir: dirParam }}
+      />
     </main>
   );
 }

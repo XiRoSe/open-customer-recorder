@@ -142,7 +142,7 @@ export default async function SessionsPage(props: {
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
           <span className="text-muted-foreground">·</span>
-          <Link href="/settings" className="text-muted-foreground hover:underline">Settings</Link>
+          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
         </div>
       </div>
 
