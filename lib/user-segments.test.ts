@@ -12,20 +12,24 @@ beforeEach(async () => {
 });
 afterEach(() => { delete process.env.SUMMARIZER_URL; });
 
-// Two tight, well-separated blobs on the unit circle. Every point gets a
-// unique jitter — duplicated points let silhouette degenerately reward
-// singleton clusters, which real embeddings never do.
-function twoBlobs(n = 6): { vectors: number[][]; labelsTruth: number[] } {
+// Gaussian-ish 2D cloud around a center — deterministic pseudo-jitter in
+// both dimensions. Line-shaped fixtures are adversarial (a uniform line
+// always "looks" bisectable to any geometric criterion); real embedding
+// clusters are cloud-shaped.
+function cloud(cx: number, cy: number, n: number, spread = 0.02): number[][] {
+  return Array.from({ length: n }, (_, i) => [
+    cx + spread * Math.sin(3 + i * 2.39),
+    cy + spread * Math.cos(1 + i * 1.71),
+  ]);
+}
+
+function twoBlobs(n = 6): { vectors: number[][] } {
+  const a = cloud(1, 0, n);
+  const b = cloud(0, 1, n);
+  // interleave: even indices = blob A, odd = blob B
   const vectors: number[][] = [];
-  const labelsTruth: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const jitter = i * 0.005;
-    vectors.push([1 - jitter, jitter]);      // blob A near (1, 0)
-    labelsTruth.push(0);
-    vectors.push([jitter + 0.002, 1 - jitter - 0.002]); // blob B near (0, 1)
-    labelsTruth.push(1);
-  }
-  return { vectors, labelsTruth };
+  for (let i = 0; i < n; i++) { vectors.push(a[i], b[i]); }
+  return { vectors };
 }
 
 describe('clustering math', () => {
@@ -47,6 +51,31 @@ describe('clustering math', () => {
     const goodScore = silhouette(vectors, good.labels, good.k);
     const badLabels = vectors.map((_, i) => (i < vectors.length / 2 ? 0 : 1)); // mixes blobs
     expect(goodScore).toBeGreaterThan(silhouette(vectors, badLabels, 2));
+  });
+
+  it('surfaces small minority groups hiding beside a large majority', () => {
+    // 24-point majority cloud + two 4-point minority clouds. A single
+    // global-silhouette k pick collapses toward the majority split;
+    // bisecting must find all three groups.
+    const vectors = [
+      ...cloud(1, 0, 24),
+      ...cloud(0, 1, 4),
+      ...cloud(-1, 0, 4),
+    ];
+    const r = clusterVectors(vectors);
+    expect(r.k).toBe(3);
+    const majorityLabels = new Set(r.labels.slice(0, 24));
+    const bLabels = new Set(r.labels.slice(24, 28));
+    const cLabels = new Set(r.labels.slice(28, 32));
+    expect(majorityLabels.size).toBe(1);
+    expect(bLabels.size).toBe(1);
+    expect(cLabels.size).toBe(1);
+    expect(new Set([...majorityLabels, ...bLabels, ...cLabels]).size).toBe(3);
+  });
+
+  it('does not shred a homogeneous population into fake segments', () => {
+    const r = clusterVectors(cloud(1, 0, 12));
+    expect(r.k).toBe(1);
   });
 
   it('representatives returns members closest to each centroid', () => {
@@ -122,7 +151,7 @@ describe.skipIf(!dbReady)('runClusteringOnce', () => {
 
   it('falls back to generic names when the summarizer is unreachable', async () => {
     const { project } = await createOrgWithProject();
-    await seedProfiles(project.id, ['shopper a', 'shopper b', 'builder a', 'builder b']);
+    await seedProfiles(project.id, ['shopper a', 'shopper b', 'shopper c', 'builder a', 'builder b', 'builder c']);
     const fetchFn = vi.fn(async () => new Response('boom', { status: 500 }));
     expect(await runClusteringOnce(fakeEmbed, fetchFn as unknown as typeof fetch)).toBe(1);
     const segments = await segmentsForProject(project.id);

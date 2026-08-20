@@ -46,21 +46,74 @@ export function silhouette(vectors: number[][], labels: number[], k: number): nu
 
 export interface ClusterResult { labels: number[]; centroids: number[][]; k: number }
 
-/** k-means over unit vectors with k chosen by silhouette (2..MAX_K). */
+// Bisecting parameters: a split must produce two real groups (each
+// ≥ MIN_SEGMENT_SIZE) whose centroids are clearly farther apart than
+// the groups are wide (separation ratio, Dunn-style). Silhouette can't
+// be the test here — it's scale-free, so even a homogeneous cluster
+// bisects at ~0.5; the separation ratio is ~1.3 for one gaussian blob
+// and 2.5+ for genuinely distinct groups.
+export const MIN_SEGMENT_SIZE = 3;
+const SPLIT_SEPARATION = 1.9;
+
+function centroidOf(vectors: number[][], members: number[]): number[] {
+  const d = vectors[0].length;
+  const c = new Array(d).fill(0);
+  for (const i of members) for (let j = 0; j < d; j++) c[j] += vectors[i][j] / members.length;
+  return c;
+}
+
+function avgDistToCentroid(vectors: number[][], members: number[], c: number[]): number {
+  return members.reduce((s, i) => s + Math.sqrt(dist2(vectors[i], c)), 0) / members.length;
+}
+
+/** Bisecting k-means: recursively split the least-coherent cluster,
+ * judging each split LOCALLY (silhouette on just that subset). Unlike a
+ * single global-silhouette k pick — which the biggest, best-separated
+ * masses dominate — this keeps carving until no cluster hides internal
+ * structure, so small actionable groups (a handful of power users
+ * inside a sea of bounces) surface as their own segments. */
 export function clusterVectors(vectors: number[][]): ClusterResult {
-  const kMax = Math.min(MAX_K, Math.floor(vectors.length / 2));
-  let best: ClusterResult | null = null;
-  let bestScore = -Infinity;
-  for (let k = 2; k <= kMax; k++) {
-    const r = kmeans(vectors, k, { initialization: 'kmeans++', seed: 7 });
-    const score = silhouette(vectors, r.clusters, k);
-    if (score > bestScore) {
-      bestScore = score;
-      best = { labels: r.clusters, centroids: r.centroids, k };
+  if (vectors.length === 0) throw new Error('not enough vectors to cluster');
+  const all = vectors.map((_, i) => i);
+  const clusters: number[][] = [all];
+  const unsplittable = new Set<number>();
+
+  while (clusters.length < MAX_K) {
+    // Candidate: worst internal cohesion among clusters big enough to
+    // yield two real groups, skipping ones that already refused to split.
+    let candidate = -1;
+    let worst = -Infinity;
+    clusters.forEach((members, idx) => {
+      if (unsplittable.has(idx) || members.length < 2 * MIN_SEGMENT_SIZE) return;
+      const spread = avgDistToCentroid(vectors, members, centroidOf(vectors, members));
+      if (spread > worst) { worst = spread; candidate = idx; }
+    });
+    if (candidate === -1) break;
+
+    const members = clusters[candidate];
+    const sub = members.map((i) => vectors[i]);
+    const r = kmeans(sub, 2, { initialization: 'kmeans++', seed: 7 });
+    const a = members.filter((_, i) => r.clusters[i] === 0);
+    const b = members.filter((_, i) => r.clusters[i] === 1);
+    let clean = a.length >= MIN_SEGMENT_SIZE && b.length >= MIN_SEGMENT_SIZE;
+    if (clean) {
+      const cA = centroidOf(vectors, a);
+      const cB = centroidOf(vectors, b);
+      const separation = Math.sqrt(dist2(cA, cB));
+      const width = avgDistToCentroid(vectors, a, cA) + avgDistToCentroid(vectors, b, cB);
+      clean = separation / Math.max(width, 1e-9) >= SPLIT_SEPARATION;
     }
+    if (!clean) { unsplittable.add(candidate); continue; }
+
+    // Replace the candidate with its two halves; reset the refusal set
+    // (indices shifted, and new geometry may make old refusals splittable).
+    clusters.splice(candidate, 1, a, b);
+    unsplittable.clear();
   }
-  if (!best) throw new Error('not enough vectors to cluster');
-  return best;
+
+  const labels = new Array(vectors.length).fill(0);
+  clusters.forEach((members, label) => members.forEach((i) => { labels[i] = label; }));
+  return { labels, centroids: clusters.map((m) => centroidOf(vectors, m)), k: clusters.length };
 }
 
 /** Indices of the members closest to their centroid, per cluster. */
