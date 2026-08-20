@@ -227,7 +227,83 @@ function elide(steps: Step[]): Step[] {
   return [...head, { t: tail[0].t, kind: 'idle', ms: 0 }, ...tail].slice(0, MAX_STEPS);
 }
 
-// Heuristic insight passes — implemented in Task 2.
-function addClickInsights(_d: SessionDigest, _clicks: ClickEvt[], _effects: number[], _endTs: number) {}
-function addNavInsights(_d: SessionDigest) {}
-function addFormInsights(_d: SessionDigest, _clicks: ClickEvt[], _fields: Map<string, number>, _lastField: string, _lastInputTs: number, _endTs: number) {}
+// --- heuristic insight passes ------------------------------------------------
+
+const RAGE_GAP_MS = 700;
+const RAGE_RADIUS_PX = 30;
+const DEAD_CLICK_MS = 1000;
+const UTURN_MS = 10_000;
+const SUBMIT_RE = /submit|sign\s?in|sign\s?up|log\s?in|register|send|save|continue|next|checkout|subscribe|buy|create/i;
+const SUCCESS_URL_RE = /thank|success|welcome|confirm|complete/i;
+
+function addClickInsights(d: SessionDigest, clicks: ClickEvt[], effects: number[], endTs: number) {
+  // Rage: run of consecutive clicks, gap ≤700ms, within 30px of the previous.
+  let run = 1;
+  for (let i = 1; i <= clicks.length; i++) {
+    const prev = clicks[i - 1];
+    const cur = clicks[i];
+    const chained = cur && cur.t - prev.t <= RAGE_GAP_MS &&
+      Math.hypot(cur.x - prev.x, cur.y - prev.y) <= RAGE_RADIUS_PX;
+    if (chained) { run++; continue; }
+    if (run >= 3) d.insights.push({ kind: 'rage_click', at: clicks[i - run].t, detail: prev.label, count: run });
+    run = 1;
+  }
+  // Dead: no effect (mutation/nav/input) within 1s after the click; the
+  // session-final click is spared (leaving right after a click usually
+  // means an off-site navigation we can't see).
+  const sorted = [...effects].sort((a, b) => a - b);
+  for (const c of clicks) {
+    if (endTs - c.t < DEAD_CLICK_MS) continue;
+    const rescued = sorted.some((t) => t > c.t && t - c.t <= DEAD_CLICK_MS);
+    if (!rescued) d.insights.push({ kind: 'dead_click', at: c.t, detail: c.label });
+  }
+}
+
+function addNavInsights(d: SessionDigest) {
+  const navs = d.steps.filter((s): s is Extract<Step, { kind: 'nav' }> => s.kind === 'nav');
+  const roundTrips = new Map<string, number>();
+  for (let i = 2; i < navs.length; i++) {
+    const [a, b, c] = [navs[i - 2], navs[i - 1], navs[i]];
+    if (a.url === c.url && a.url !== b.url && c.t - a.t <= UTURN_MS) {
+      d.insights.push({ kind: 'uturn', at: c.t, detail: `${a.url} ↔ ${b.url}` });
+      const key = [a.url, b.url].sort().join('|');
+      roundTrips.set(key, (roundTrips.get(key) || 0) + 1);
+    }
+  }
+  for (const [key, n] of roundTrips) {
+    if (n >= 2) d.insights.push({ kind: 'pogo_stick', at: 0, detail: key.replace('|', ' ↔ '), count: n });
+  }
+}
+
+function addFormInsights(d: SessionDigest, clicks: ClickEvt[], fields: Map<string, number>, lastField: string, lastInputTs: number, endTs: number) {
+  if (fields.size === 0) return;
+  const submitted = clicks.some((c) => c.t >= lastInputTs &&
+    (c.tag === 'button' || SUBMIT_RE.test(c.label)));
+  const successNav = d.steps.some((s) => s.kind === 'nav' && s.t > lastInputTs && s.t - lastInputTs <= 60_000 && SUCCESS_URL_RE.test(s.url));
+  if (!submitted && !successNav) {
+    d.insights.push({ kind: 'form_abandon', at: Math.min(lastInputTs, endTs), detail: lastField });
+  }
+}
+
+// --- narrative ----------------------------------------------------------------
+
+function mss(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+export function renderNarrative(d: SessionDigest): string {
+  if (d.steps.length === 0) return 'No activity captured.';
+  const t0 = d.steps[0].t;
+  let navSeen = 0;
+  const lines = d.steps.map((s) => {
+    const at = mss(s.t - t0);
+    switch (s.kind) {
+      case 'nav': return `${at} ${++navSeen === 1 ? 'Landed on' : 'Went to'} ${s.url}`;
+      case 'click': return `${at} Clicked "${s.label}"`;
+      case 'input': return `${at} Typed in ${s.field}`;
+      case 'idle': return s.ms > 0 ? `${at} Idle for ${mss(s.ms)}` : `${at} …`;
+    }
+  });
+  return lines.join('\n');
+}

@@ -146,3 +146,85 @@ describe('extractDigest durability', () => {
     expect(DIGEST_VERSION).toBe(1);
   });
 });
+
+describe('insights', () => {
+  it('detects rage clicks: ≥3 clicks within 700ms gaps and 30px radius', () => {
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/'), fullSnapshot(T0, [el(10, 'button', {}, [txt(11, 'Go')])]),
+      click(T0, 10, 100, 100), click(T0 + 300, 10, 105, 102), click(T0 + 600, 10, 103, 99),
+    ]));
+    expect(d.insights).toContainEqual(expect.objectContaining({ kind: 'rage_click', count: 3, detail: 'Go' }));
+  });
+
+  it('does not flag 3 slow clicks as rage', () => {
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/'), fullSnapshot(T0, [el(10, 'button', {}, [txt(11, 'Go')])]),
+      click(T0, 10), click(T0 + 2000, 10), click(T0 + 4000, 10),
+    ]));
+    expect(d.insights.filter((i) => i.kind === 'rage_click')).toHaveLength(0);
+  });
+
+  it('detects dead clicks (no mutation/nav/input within 1s), sparing session-final clicks', () => {
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/'), fullSnapshot(T0, [el(10, 'button', {}, [txt(11, 'Broken')]), el(20, 'button', {}, [txt(21, 'Works')])]),
+      click(T0 + 1000, 10),                       // dead: next effect is 5s away
+      mutationAdd(T0 + 6000, 3, el(40, 'div')),
+      click(T0 + 7000, 20),                       // alive: mutation 200ms later
+      mutationAdd(T0 + 7200, 3, el(41, 'div')),
+      click(T0 + 9000, 10),                       // last click <1s before end — spared
+    ]));
+    const dead = d.insights.filter((i) => i.kind === 'dead_click');
+    expect(dead).toEqual([expect.objectContaining({ kind: 'dead_click', at: T0 + 1000, detail: 'Broken' })]);
+  });
+
+  it('detects nav U-turns and pogo-sticking', () => {
+    const nav = (t: number, href: string) => ({ type: 5, timestamp: t, data: { tag: 'mega-url-change', payload: { href } } });
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/a'), fullSnapshot(T0, []),
+      nav(T0 + 2000, 'https://x.test/b'), nav(T0 + 4000, 'https://x.test/a'),
+      nav(T0 + 6000, 'https://x.test/b'), nav(T0 + 8000, 'https://x.test/a'),
+    ]));
+    expect(d.insights.filter((i) => i.kind === 'uturn').length).toBeGreaterThanOrEqual(1);
+    // a→b→a→b→a yields 3 A|B round-trip detections (one per uturn window)
+    expect(d.insights).toContainEqual(expect.objectContaining({ kind: 'pogo_stick', count: 3 }));
+  });
+
+  it('detects refresh loops (2+ meta loads of same URL within 30s)', () => {
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/checkout'), fullSnapshot(T0, []),
+      meta(T0 + 5000, 'https://x.test/checkout'), fullSnapshot(T0 + 5000, []),
+      meta(T0 + 9000, 'https://x.test/checkout'), fullSnapshot(T0 + 9000, []),
+    ]));
+    expect(d.insights).toContainEqual(expect.objectContaining({ kind: 'refresh_loop', count: 3 }));
+  });
+
+  it('flags form abandonment with the last touched field; a submit-like click clears it', () => {
+    const abandoned = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/signup'),
+      fullSnapshot(T0, [el(10, 'input', { placeholder: 'Email' }), el(20, 'input', { placeholder: 'Password' })]),
+      input(T0 + 1000, 10), input(T0 + 5000, 20),
+    ]));
+    expect(abandoned.insights).toContainEqual(expect.objectContaining({ kind: 'form_abandon', detail: 'Password' }));
+
+    const submitted = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/signup'),
+      fullSnapshot(T0, [el(10, 'input', { placeholder: 'Email' }), el(30, 'button', { type: 'submit' }, [txt(31, 'Create account')])]),
+      input(T0 + 1000, 10), click(T0 + 2000, 30),
+    ]));
+    expect(submitted.insights.filter((i) => i.kind === 'form_abandon')).toHaveLength(0);
+  });
+});
+
+describe('renderNarrative', () => {
+  it('renders one line per step with m:ss offsets', async () => {
+    const { renderNarrative } = await import('./session-digest');
+    const d = extractDigest(ndjsonOf([
+      meta(T0, 'https://x.test/home'),
+      fullSnapshot(T0, [el(10, 'button', {}, [txt(11, 'Pricing')])]),
+      click(T0 + 65_000, 10),
+    ]));
+    const n = renderNarrative(d);
+    expect(n).toContain('0:00 Landed on https://x.test/home');
+    expect(n).toContain('1:05 Clicked "Pricing"');
+  });
+});
