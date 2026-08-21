@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { db, schema } from '@/lib/db';
 import { and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
-import { segmentsForProject, clusterMapForProject, MIN_PROFILES_TO_CLUSTER } from '@/lib/user-segments';
+import { clustersDataForProject, MIN_PROFILES_TO_CLUSTER } from '@/lib/user-segments';
 import { ClusterMap } from '@/components/cluster-map';
 import { Card } from '@/components/ui/card';
 
@@ -15,10 +15,9 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
     .where(and(eq(schema.projects.id, id), eq(schema.projects.orgId, session.orgId)));
   if (!project) redirect('/projects');
 
-  const [segments, points] = await Promise.all([
-    segmentsForProject(id),
-    clusterMapForProject(id),
-  ]);
+  const dims = await clustersDataForProject(id);
+  const points = dims[0]?.points ?? [];
+  const segmentCount = dims.find((d) => d.dimension === 'overall')?.segments.length ?? 0;
 
   return (
     <main className="max-w-6xl mx-auto p-6 space-y-4">
@@ -26,7 +25,7 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
         <div>
           <h1 className="text-2xl font-semibold">{project.name} Clusters</h1>
           <p className="text-sm text-muted-foreground">
-            {points.length.toLocaleString()} visitors mapped by profile similarity into {segments.length} {segments.length === 1 ? 'segment' : 'segments'} — hover a dot for the profile, click to open that visitor&apos;s sessions.
+            {points.length.toLocaleString()} visitors, {segmentCount} overall {segmentCount === 1 ? 'segment' : 'segments'} across {dims.length} research {dims.length === 1 ? 'dimension' : 'dimensions'} — switch dimension to re-map, hover a dot for the analysis, click to open that visitor&apos;s sessions.
           </p>
         </div>
         <div className="flex gap-2 text-sm items-baseline">
@@ -44,7 +43,7 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
 
       {points.length > 0 ? (
         <Card className="p-4">
-          <ClusterMap points={points} segments={segments} sessionsBasePath={`/projects/${id}/sessions`} />
+          <ClusterMap dims={dims} sessionsBasePath={`/projects/${id}/sessions`} />
         </Card>
       ) : (
         <Card className="p-8 text-center text-sm text-muted-foreground">

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
-import { clusterVectors, representatives, silhouette, runClusteringOnce, segmentsForProject, clusterMapForProject } from './user-segments';
+import { clusterVectors, representatives, silhouette, runClusteringOnce, segmentsForProject, clusterMapForProject, clustersDataForProject } from './user-segments';
 
 const dbReady = await isDbAvailable();
 beforeEach(async () => {
@@ -96,13 +96,14 @@ const fakeEmbed = async (texts: string[]) =>
   texts.map((t, i) => (t.includes('shopper') ? [1 - i * 0.001, i * 0.001] : [i * 0.001, 1 - i * 0.001]));
 
 const nameResponse = () => new Response(JSON.stringify({
-  choices: [{ message: { content: 'Name: Test Segment\nDescription: Visitors doing test things.' } }],
+  choices: [{ message: { content: 'Name: Test Segment\nDescription: Visitors doing test things.\nAnalysis: They behave consistently and deserve a targeted fix.' } }],
 }), { status: 200 });
 
-async function seedProfiles(projectId: string, texts: string[]) {
+async function seedProfiles(projectId: string, texts: string[], facetsList?: (object | null)[]) {
   for (let i = 0; i < texts.length; i++) {
     await db.insert(schema.userProfiles).values({
       projectId, visitorKey: `v${i}`, profileText: texts[i], sessionsSummarized: 2, status: 'done',
+      facets: facetsList?.[i] ?? null,
     });
   }
 }
@@ -131,6 +132,38 @@ describe.skipIf(!dbReady)('runClusteringOnce', () => {
       expect(p.segmentId).not.toBeNull();
       expect(p.excerpt.length).toBeGreaterThan(0);
     }
+  });
+
+  it('clusters each facet dimension and averages facet positions for overall', async () => {
+    const { project } = await createOrgWithProject();
+    const mk = (kind: string, i: number) => ({
+      persona: `${kind} persona ${i}`, intent: `${kind} intent ${i}`,
+      source: `${kind} source ${i}`, experience: `${kind} experience ${i}`,
+    });
+    await seedProfiles(project.id,
+      ['shopper profile 0', 'shopper profile 1', 'shopper profile 2', 'builder profile 0', 'builder profile 1', 'builder profile 2'],
+      [mk('shopper', 0), mk('shopper', 1), mk('shopper', 2), mk('builder', 0), mk('builder', 1), mk('builder', 2)],
+    );
+    const fetchFn = vi.fn(async () => nameResponse());
+    expect(await runClusteringOnce(fakeEmbed, fetchFn as unknown as typeof fetch)).toBe(1);
+
+    const dims = await clustersDataForProject(project.id);
+    expect(dims.map((d) => d.dimension).sort()).toEqual(['experience', 'intent', 'overall', 'persona', 'source']);
+    for (const d of dims) {
+      expect(d.points).toHaveLength(6);
+      expect(d.segments).toHaveLength(2);
+      expect(d.analysis.length).toBeGreaterThan(0);
+      expect(d.segments[0].analysis).toContain('targeted fix');
+    }
+    // Overall position = average of the visitor's facet positions.
+    const overall = dims.find((d) => d.dimension === 'overall')!;
+    const facetXs = dims.filter((d) => d.dimension !== 'overall')
+      .map((d) => d.points.find((p) => p.visitorKey === 'v0')!.x);
+    const avgX = facetXs.reduce((a, b) => a + b, 0) / facetXs.length;
+    expect(overall.points.find((p) => p.visitorKey === 'v0')!.x).toBeCloseTo(avgX, 6);
+    // Facet tooltips show the facet text, not the whole profile.
+    const persona = dims.find((d) => d.dimension === 'persona')!;
+    expect(persona.points.find((p) => p.visitorKey === 'v0')!.excerpt).toBe('shopper persona 0');
   });
 
   it('is a no-op when profiles have not changed since the last run', async () => {

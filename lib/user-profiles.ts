@@ -12,9 +12,24 @@ const MAX_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 120_000;
 const SWEEP_BATCH = 25;
 
-const PROFILE_SYSTEM_PROMPT = `You build a profile of one website visitor from AI summaries of their recorded sessions, listed newest first.
-Write 3-5 plain sentences: who this visitor appears to be, what they are trying to achieve across visits, recurring friction they hit, and whether their engagement is growing or fading.
-Only state what the data supports. No markdown, no preamble, no bullet points.`;
+const PROFILE_SYSTEM_PROMPT = `You are an expert researcher of website visitors and buyers. From the AI summaries of one visitor's recorded sessions (newest first, with entry pages and referrers), write exactly four lines:
+Persona: <who this visitor appears to be - role, sophistication, context. One sentence.>
+Intent: <what they are trying to achieve across visits. One sentence.>
+Source: <where they come from and why - referrers, entry pages, campaigns; if unknown, what the entry pages suggest. One sentence.>
+Experience: <friction they hit and whether engagement is growing or fading. One sentence.>
+Only state what the data supports. No markdown, no extra lines.`;
+
+export interface ProfileFacets { persona?: string; intent?: string; source?: string; experience?: string }
+
+export function parseFacets(text: string): ProfileFacets | null {
+  const grab = (label: string) => new RegExp(`^${label}:\\s*(.+)$`, 'im').exec(text)?.[1]?.trim();
+  const facets: ProfileFacets = {};
+  for (const key of ['persona', 'intent', 'source', 'experience'] as const) {
+    const v = grab(key[0].toUpperCase() + key.slice(1));
+    if (v) facets[key] = v.slice(0, 400);
+  }
+  return Object.keys(facets).length >= 2 ? facets : null;
+}
 
 interface VisitorCount extends Record<string, unknown> { project_id: string; visitor_key: string; done_count: number }
 
@@ -69,11 +84,11 @@ async function claimOne(): Promise<ClaimedProfile | null> {
   return rows[0] ?? null;
 }
 
-interface SummaryLine extends Record<string, unknown> { started_at: string; duration_ms: number | null; intent_text: string; total: number }
+interface SummaryLine extends Record<string, unknown> { started_at: string; duration_ms: number | null; intent_text: string; page_url: string | null; referrer: string | null; total: number }
 
 async function buildProfileInput(projectId: string, visitorKey: string): Promise<string | null> {
   const res = await db.execute<SummaryLine>(sql`
-    SELECT s.started_at, s.duration_ms, ss.intent_text, count(*) OVER ()::int AS total
+    SELECT s.started_at, s.duration_ms, s.page_url, s.referrer, ss.intent_text, count(*) OVER ()::int AS total
     FROM ${schema.sessions} s
     JOIN ${schema.sessionSummaries} ss ON ss.session_id = s.id
     WHERE s.project_id = ${projectId}
@@ -86,7 +101,11 @@ async function buildProfileInput(projectId: string, visitorKey: string): Promise
   if (rows.length < PROFILE_MIN_SESSIONS) return null;
   const total = rows[0].total;
   const secs = (ms: number | null) => `${Math.round((ms ?? 0) / 1000)}s`;
-  const lines = rows.map((r) => `- ${String(r.started_at).slice(0, 10)} (${secs(r.duration_ms)}): ${r.intent_text}`);
+  const pathOf = (url: string | null) => { if (!url) return null; try { const u = new URL(url); return u.pathname + u.search; } catch { return url; } };
+  const lines = rows.map((r) => {
+    const ctx = [pathOf(r.page_url) ? `entry ${pathOf(r.page_url)}` : null, r.referrer ? `from ${r.referrer}` : null].filter(Boolean).join(', ');
+    return `- ${String(r.started_at).slice(0, 10)} (${secs(r.duration_ms)}${ctx ? `, ${ctx}` : ''}): ${r.intent_text}`;
+  });
   const header = total > rows.length
     ? `Visitor with ${total} summarized sessions; the ${rows.length} most recent:`
     : `Visitor with ${total} summarized sessions:`;
@@ -135,9 +154,11 @@ export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<
       } finally {
         clearTimeout(timer);
       }
+      const facets = parseFacets(profileText);
       await db.execute(sql`
         UPDATE ${schema.userProfiles}
-        SET status = 'done', profile_text = ${profileText}, updated_at = now()
+        SET status = 'done', profile_text = ${profileText},
+            facets = ${facets ? JSON.stringify(facets) : null}::jsonb, updated_at = now()
         WHERE id = ${row.id}
       `);
       done++;

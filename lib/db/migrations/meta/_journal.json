@@ -113,6 +113,13 @@
       "when": 1787226719962,
       "tag": "0015_worthless_wendell_rand",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787270192010,
+      "tag": "0016_elite_prodigy",
+      "breakpoints": true
     }
   ]
 }

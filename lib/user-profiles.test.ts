@@ -3,7 +3,23 @@ import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
 import { and, eq } from 'drizzle-orm';
-import { sweepUserProfilesOnce, drainUserProfiles, profilesForVisitors } from './user-profiles';
+import { sweepUserProfilesOnce, drainUserProfiles, profilesForVisitors, parseFacets } from './user-profiles';
+
+describe('parseFacets', () => {
+  it('parses the four labeled lines', () => {
+    expect(parseFacets('Persona: A founder.\nIntent: Evaluate pricing.\nSource: Google search.\nExperience: Smooth, growing.')).toEqual({
+      persona: 'A founder.', intent: 'Evaluate pricing.', source: 'Google search.', experience: 'Smooth, growing.',
+    });
+  });
+
+  it('returns null for unstructured text', () => {
+    expect(parseFacets('Just a plain old profile paragraph with no labels.')).toBeNull();
+  });
+
+  it('tolerates a partially structured reply (2+ facets)', () => {
+    expect(parseFacets('Persona: A founder.\nIntent: Buy.')).toEqual({ persona: 'A founder.', intent: 'Buy.' });
+  });
+});
 
 const dbReady = await isDbAvailable();
 beforeEach(async () => {

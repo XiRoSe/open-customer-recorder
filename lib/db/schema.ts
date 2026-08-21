@@ -172,6 +172,10 @@ export const userProfiles = pgTable('user_profiles', {
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   visitorKey: text('visitor_key').notNull(),
   profileText: text('profile_text'),
+  // Structured research facets extracted by the profile LLM in the same
+  // call: { persona, intent, source, experience } — each a one-sentence
+  // string. Null for profiles generated before facets existed.
+  facets: jsonb('facets'),
   segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
   // 2D PCA projection of the profile embedding, set at clustering time —
   // drives the cluster map without re-embedding on page load.
@@ -195,12 +199,44 @@ export const userProfiles = pgTable('user_profiles', {
 export const userSegments = pgTable('user_segments', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  // Which research dimension this segment belongs to:
+  // 'overall' | 'persona' | 'intent' | 'source' | 'experience'.
+  dimension: text('dimension').notNull().default('overall'),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
+  // Analyst paragraph beyond the one-line description: what unites the
+  // group, why it matters, what to do about it.
+  analysis: text('analysis').notNull().default(''),
   size: integer('size').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
-  projectIdx: index('user_segments_project_idx').on(t.projectId),
+  projectIdx: index('user_segments_project_idx').on(t.projectId, t.dimension),
+}));
+
+// Per-dimension position + segment assignment for each profile — one row
+// per (profile, dimension). The 'overall' dimension stays on
+// user_profiles.segmentId/mapX/mapY.
+export const profileDimensionPoints = pgTable('profile_dimension_points', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  profileId: uuid('profile_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+  dimension: text('dimension').notNull(),
+  segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
+  x: doublePrecision('x').notNull(),
+  y: doublePrecision('y').notNull(),
+}, (t) => ({
+  profileDimIdx: uniqueIndex('profile_dimension_points_profile_dim_idx').on(t.profileId, t.dimension),
+}));
+
+// Batch-level analyst read per dimension ("what Source reveals about
+// this cohort"), refreshed on every clustering run.
+export const dimensionAnalyses = pgTable('dimension_analyses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  dimension: text('dimension').notNull(),
+  analysis: text('analysis').notNull().default(''),
+  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  projectDimIdx: uniqueIndex('dimension_analyses_project_dim_idx').on(t.projectId, t.dimension),
 }));
 
 export const sessionLinks = pgTable('session_links', {
