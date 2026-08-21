@@ -17,7 +17,9 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
 
   const dims = await clustersDataForProject(id);
   const points = dims[0]?.points ?? [];
-  const segmentCount = dims.find((d) => d.dimension === 'overall')?.segments.length ?? 0;
+  const totalSegments = dims.reduce((s, d) => s + d.segments.length, 0);
+  const [built] = await db.select({ at: sql<string>`max(${schema.userSegments.createdAt})` })
+    .from(schema.userSegments).where(eq(schema.userSegments.projectId, id));
 
   return (
     <main className="max-w-6xl mx-auto p-6 space-y-4">
@@ -25,9 +27,9 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
         <div>
           <h1 className="text-2xl font-semibold">{project.name} Clusters</h1>
           <p className="text-sm text-muted-foreground">
-            Your visitors, mapped by similarity and grouped into behavioral segments — each research
-            dimension asks a different question of the same people. Switch a dimension to watch the
-            cohort regroup; hover any dot for its story, click through to the sessions behind it.
+            {points.length.toLocaleString()} {points.length === 1 ? 'visitor' : 'visitors'} mapped
+            {totalSegments > 0 ? <> · <span className="font-medium text-foreground">{totalSegments} segments</span> across {dims.length} {dims.length === 1 ? 'dimension' : 'dimensions'}</> : null}
+            {built?.at ? <> · last analyzed {new Date(built.at).toLocaleString('en-GB')}</> : null}
           </p>
         </div>
         <div className="flex gap-2 text-sm items-baseline">
