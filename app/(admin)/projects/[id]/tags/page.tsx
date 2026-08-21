@@ -51,6 +51,8 @@ export default async function TagsPage(props: { params: Promise<{ id: string }> 
         <div className="flex gap-2 text-sm items-baseline">
           <Link href={`/projects/${id}/sessions`} className="text-muted-foreground hover:underline">Sessions</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/users`} className="text-muted-foreground hover:underline">Users</Link>
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/clusters`} className="text-muted-foreground hover:underline">Clusters</Link>

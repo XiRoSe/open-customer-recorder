@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db, schema } from '@/lib/db';
-import { and, eq, asc, desc, count, or, gt, notExists, sql, getTableColumns } from 'drizzle-orm';
+import { and, eq, asc, desc, count, or, gt, lt, notExists, sql, getTableColumns } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { viewedSessionIds } from '@/lib/session-views';
 import { tagsForSessions } from '@/lib/session-tags';
@@ -45,10 +45,10 @@ function fmtDuration(ms: number | null) {
 
 export default async function SessionsPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ user?: string; range?: string; sort?: string; dir?: string; page?: string }>;
+  searchParams: Promise<{ user?: string; range?: string; sort?: string; dir?: string; page?: string; from?: string; to?: string }>;
 }) {
   const { id } = await props.params;
-  const { user, range: rangeParam, sort: sortParam, dir: dirParam, page: pageParam } = await props.searchParams;
+  const { user, range: rangeParam, sort: sortParam, dir: dirParam, page: pageParam, from: fromParam, to: toParam } = await props.searchParams;
   const session = await readSessionCookie();
   if (!session) redirect('/login');
   const [project] = await db.select().from(schema.projects)
@@ -65,7 +65,13 @@ export default async function SessionsPage(props: {
     eq(schema.sessions.projectId, id),
     gt(schema.sessions.eventCount, 0),
   ];
-  if (cutoff) filters.push(gt(schema.sessions.startedAt, cutoff));
+  // Explicit time slice (from the Timeline's click-through) beats the
+  // relative range tabs.
+  const sliceFrom = fromParam && !isNaN(Date.parse(fromParam)) ? new Date(fromParam) : null;
+  const sliceTo = toParam && !isNaN(Date.parse(toParam)) ? new Date(toParam) : null;
+  if (sliceFrom && sliceTo) {
+    filters.push(gt(schema.sessions.startedAt, sliceFrom), lt(schema.sessions.startedAt, sliceTo));
+  } else if (cutoff) filters.push(gt(schema.sessions.startedAt, cutoff));
   if (user) {
     filters.push(
       or(eq(schema.sessions.userId, user), eq(schema.sessions.anonId, user))!,
@@ -131,10 +137,13 @@ export default async function SessionsPage(props: {
             {activeRange.hours !== null ? <> in the last {activeRange.label}</> : null}
             {unviewed > 0 ? <> · <span className="font-medium text-foreground">{unviewed} unviewed</span></> : null}
             {user ? <> · filtered by <span className="font-mono">{user}</span> · <Link href={clearUserHref} className="underline">clear</Link></> : null}
+            {sliceFrom && sliceTo ? <> · {new Date(sliceFrom).toLocaleString('en-GB')} – {new Date(sliceTo).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · <Link href={basePath} className="underline">clear</Link></> : null}
           </p>
         </div>
         <div className="flex gap-2 text-sm items-baseline">
           <span className="font-medium">Sessions</span>
+          <span className="text-muted-foreground">·</span>
+          <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/users${activeRange.value === '24h' ? '' : `?range=${activeRange.value}`}`} className="text-muted-foreground hover:underline">Users</Link>
           <span className="text-muted-foreground">·</span>

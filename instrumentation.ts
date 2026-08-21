@@ -24,6 +24,7 @@ export async function register() {
   const { drainSummaryQueue, resetStuckProcessing } = await import('./lib/summary-worker');
   const { sweepUserProfilesOnce, drainUserProfiles } = await import('./lib/user-profiles');
   const { runClusteringOnce } = await import('./lib/user-segments');
+  const { refreshTimelineAnalyses } = await import('./lib/timeline');
 
   // Session narratives: three INDEPENDENT loops. Sweep and drain must not
   // share a cycle — a large backlog drain can run for hours, and fresh
@@ -67,6 +68,18 @@ export async function register() {
   };
   setTimeout(clusterCycle, 2 * 60 * 1000); // let the first drains land
   setInterval(clusterCycle, 10 * 60 * 1000);
+  // Timeline analyst reads: cached per (project, range), stale after 6h —
+  // the cycle itself is a no-op when everything is fresh.
+  let timelineInFlight = false;
+  const timelineCycle = async () => {
+    if (timelineInFlight) return;
+    timelineInFlight = true;
+    try { await refreshTimelineAnalyses(); }
+    catch (e) { console.warn('[timeline] cycle failed', e); }
+    finally { timelineInFlight = false; }
+  };
+  setTimeout(timelineCycle, 4 * 60 * 1000);
+  setInterval(timelineCycle, 60 * 60 * 1000);
   setInterval(() => {
     resetStuckProcessing().catch((e) => console.warn('[summaries] reset failed', e));
   }, 5 * 60 * 1000);

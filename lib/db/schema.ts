@@ -239,6 +239,18 @@ export const dimensionAnalyses = pgTable('dimension_analyses', {
   projectDimIdx: uniqueIndex('dimension_analyses_project_dim_idx').on(t.projectId, t.dimension),
 }));
 
+// Cached analyst read of the timeline window per range (24h / 7d / 30d),
+// refreshed by a background cycle — never generated at page-view time.
+export const timelineAnalyses = pgTable('timeline_analyses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  rangeKey: text('range_key').notNull(),
+  analysis: text('analysis').notNull().default(''),
+  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  projectRangeIdx: uniqueIndex('timeline_analyses_project_range_idx').on(t.projectId, t.rangeKey),
+}));
+
 export const sessionLinks = pgTable('session_links', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: uuid('session_id').notNull().references(() => sessions.id, { onDelete: 'cascade' }),
