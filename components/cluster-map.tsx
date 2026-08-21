@@ -152,14 +152,8 @@ export function ClusterMap({ dims, sessionsBasePath }: {
             </g>
           ))}
 
-          {/* instrument face: brass concentric guides + crosshair + edge ticks */}
+          {/* instrument edge ticks — brass, no circles/crosshair */}
           <g stroke={BRASS} fill="none">
-            {[70, 140, 210].map((r) => (
-              <circle key={r} cx={W / 2} cy={H / 2} r={r} strokeWidth="0.75" opacity="0.28" />
-            ))}
-            <circle cx={W / 2} cy={H / 2} r={2.5} fill={BRASS} stroke="none" opacity="0.5" />
-            <line x1={W / 2} x2={W / 2} y1={PAD} y2={H - PAD} strokeWidth="0.75" opacity="0.22" />
-            <line x1={PAD} x2={W - PAD} y1={H / 2} y2={H / 2} strokeWidth="0.75" opacity="0.22" />
             {Array.from({ length: 17 }, (_, i) => PAD + (i / 16) * (W - PAD * 2)).map((x, i) => (
               <g key={`t${i}`} strokeWidth="1" opacity={i % 4 === 0 ? 0.55 : 0.3}>
                 <line x1={x} x2={x} y1={H - PAD} y2={H - PAD + (i % 4 === 0 ? 8 : 5)} />

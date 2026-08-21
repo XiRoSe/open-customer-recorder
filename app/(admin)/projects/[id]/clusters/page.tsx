@@ -25,7 +25,9 @@ export default async function ClustersPage(props: { params: Promise<{ id: string
         <div>
           <h1 className="text-2xl font-semibold">{project.name} Clusters</h1>
           <p className="text-sm text-muted-foreground">
-            {points.length.toLocaleString()} visitors, {segmentCount} overall {segmentCount === 1 ? 'segment' : 'segments'} across {dims.length} research {dims.length === 1 ? 'dimension' : 'dimensions'} — switch dimension to re-map, hover a dot for the analysis, click to open that visitor&apos;s sessions.
+            Your visitors, mapped by similarity and grouped into behavioral segments — each research
+            dimension asks a different question of the same people. Switch a dimension to watch the
+            cohort regroup; hover any dot for its story, click through to the sessions behind it.
           </p>
         </div>
         <div className="flex gap-2 text-sm items-baseline">

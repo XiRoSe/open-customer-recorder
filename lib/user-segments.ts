@@ -24,12 +24,16 @@ const REPRESENTATIVES = 6;
 const NAME_TIMEOUT_MS = 60_000;
 
 // Bisecting parameters: a split must produce two real groups (each
-// ≥ MIN_SEGMENT_SIZE) whose centroids are clearly farther apart than
-// the groups are wide (separation ratio, Dunn-style). Silhouette can't
-// be the test here — it's scale-free, so even a homogeneous cluster
-// bisects at ~0.5.
+// ≥ MIN_SEGMENT_SIZE) whose members agree with each other more than
+// with the other group — mean within-child cosine minus cross-child
+// cosine ≥ SPLIT_COS_MARGIN. This is the criterion that survives
+// 384-dim embedding geometry: centroid-distance ratios (Dunn-style)
+// collapse under the curse of dimensionality (clusters are "fluffy",
+// ratios rarely exceed ~0.9 even for distinct topics), and silhouette
+// is scale-free (a homogeneous cluster bisects at ~0.5). The cosine
+// margin is dimension-proof and directly interpretable.
 export const MIN_SEGMENT_SIZE = 3;
-const SPLIT_SEPARATION = 1.7;
+export const SPLIT_COS_MARGIN = 0.05;
 
 function dist2(a: number[], b: number[]): number {
   let s = 0;
@@ -76,8 +80,37 @@ function avgDistToCentroid(vectors: number[][], members: number[], c: number[]):
 /** Bisecting k-means: recursively split the least-coherent cluster,
  * judging each split locally — so small actionable groups surface even
  * beside a large majority, and homogeneous data stays one segment. */
-export function clusterVectors(vectors: number[][]): ClusterResult {
-  if (vectors.length === 0) throw new Error('not enough vectors to cluster');
+// Closed-form cosine sums over unit vectors: with S = Σv over a group,
+// mean pairwise cos within = (||S||² − n) / (n(n−1)); mean cross cos
+// between groups = (S_A · S_B) / (n_A n_B).
+function sumVec(vectors: number[][], members: number[]): number[] {
+  const d = vectors[0].length;
+  const s = new Array(d).fill(0);
+  for (const i of members) for (let j = 0; j < d; j++) s[j] += vectors[i][j];
+  return s;
+}
+function dot(a: number[], b: number[]): number {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+function meanWithinCos(vectors: number[][], members: number[]): number {
+  const n = members.length;
+  if (n < 2) return 1;
+  const s = sumVec(vectors, members);
+  return (dot(s, s) - n) / (n * (n - 1));
+}
+function meanCrossCos(vectors: number[][], a: number[], b: number[]): number {
+  return dot(sumVec(vectors, a), sumVec(vectors, b)) / (a.length * b.length);
+}
+
+export function clusterVectors(rawVectors: number[][]): ClusterResult {
+  if (rawVectors.length === 0) throw new Error('not enough vectors to cluster');
+  // Cosine math assumes unit vectors — normalize defensively.
+  const vectors = rawVectors.map((v) => {
+    const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+    return v.map((x) => x / norm);
+  });
   const all = vectors.map((_, i) => i);
   const clusters: number[][] = [all];
   const unsplittable = new Set<number>();
@@ -99,11 +132,9 @@ export function clusterVectors(vectors: number[][]): ClusterResult {
     const b = members.filter((_, i) => r.clusters[i] === 1);
     let clean = a.length >= MIN_SEGMENT_SIZE && b.length >= MIN_SEGMENT_SIZE;
     if (clean) {
-      const cA = centroidOf(vectors, a);
-      const cB = centroidOf(vectors, b);
-      const separation = Math.sqrt(dist2(cA, cB));
-      const width = avgDistToCentroid(vectors, a, cA) + avgDistToCentroid(vectors, b, cB);
-      clean = separation / Math.max(width, 1e-9) >= SPLIT_SEPARATION;
+      const within = (meanWithinCos(vectors, a) + meanWithinCos(vectors, b)) / 2;
+      const cross = meanCrossCos(vectors, a, b);
+      clean = within - cross >= SPLIT_COS_MARGIN;
     }
     if (!clean) { unsplittable.add(candidate); continue; }
 
