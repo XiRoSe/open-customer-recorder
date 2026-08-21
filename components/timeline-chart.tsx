@@ -40,9 +40,11 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
   );
 
   const hourly = bucketMs < 86_400_000;
+  // Fixed UTC: buckets are cut on UTC boundaries, and the server and
+  // the viewer's browser must render identical text (hydration).
   const fmtBucket = (start: number) => hourly
-    ? new Date(start).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-    : new Date(start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    ? new Date(start).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+    : new Date(start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' });
 
   const gotoSlice = (b: TimelineBucket) => {
     const from = new Date(b.start).toISOString();
@@ -153,6 +155,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
             {SOURCE_META[s].label}
           </span>
         ))}
+        {hourly && <span className="ml-auto text-xs text-muted-foreground">times in UTC</span>}
       </div>
     </div>
   );
