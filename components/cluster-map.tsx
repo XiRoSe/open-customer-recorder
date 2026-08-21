@@ -83,37 +83,23 @@ export function ClusterMap({ dims, sessionsBasePath }: {
 
   return (
     <div className="space-y-3">
-      {/* header: high-level dimension key (left) · dimension switcher (right) */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="text-xs text-muted-foreground max-w-md">
-          <div className="text-[11px] font-medium uppercase tracking-wider mb-1">Research dimensions</div>
-          <p className="m-0 leading-relaxed">
-            {dims.map((d, i) => (
-              <span key={d.dimension}>
-                {i > 0 && <span className="mx-1.5 opacity-60">·</span>}
-                <span className="font-medium text-foreground/80">{DIMENSION_LABELS[d.dimension]}</span>
-                {' '}{DIMENSION_KEY[d.dimension]}
-              </span>
-            ))}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {dims.map((d) => (
-            <button
-              key={d.dimension}
-              type="button"
-              title={DIMENSION_GLOSSARY[d.dimension]}
-              onClick={() => { setDimKey(d.dimension); setFocusSegment(null); setHover(null); }}
-              className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
-                d.dimension === dim.dimension
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {DIMENSION_LABELS[d.dimension] ?? d.dimension}
-            </button>
-          ))}
-        </div>
+      {/* dimension switcher — each chip explains itself on hover */}
+      <div className="flex flex-wrap gap-1.5 justify-end">
+        {dims.map((d) => (
+          <button
+            key={d.dimension}
+            type="button"
+            title={DIMENSION_GLOSSARY[d.dimension]}
+            onClick={() => { setDimKey(d.dimension); setFocusSegment(null); setHover(null); }}
+            className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
+              d.dimension === dim.dimension
+                ? 'bg-foreground text-background border-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            {DIMENSION_LABELS[d.dimension] ?? d.dimension}
+          </button>
+        ))}
       </div>
 
       {/* batch-level analyst read for this dimension */}
