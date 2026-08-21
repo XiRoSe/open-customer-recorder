@@ -1,5 +1,32 @@
-import { describe, it, expect } from 'vitest';
-import { buildTimeline, type TimelineSessionRow } from './timeline';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { buildTimeline, timelineForProject, type TimelineSessionRow } from './timeline';
+import { resetDb, createOrgWithProject } from '@/tests/helpers';
+import { isDbAvailable } from '@/tests/db-available';
+import { db, schema } from '@/lib/db';
+
+const dbReady = await isDbAvailable();
+beforeEach(async () => { if (dbReady) await resetDb(); });
+
+describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
+  it('fetches, categorizes, and totals real rows end to end', async () => {
+    const { project } = await createOrgWithProject();
+    const [s] = await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a1', startedAt: new Date(Date.now() - 3600_000),
+      endedAt: new Date(), eventCount: 2, durationMs: 45_000, blobPath: '',
+      referrer: 'https://www.google.com/', pageUrl: 'https://x.test/',
+    }).returning();
+    await db.insert(schema.sessionSummaries).values({
+      sessionId: s.id, digest: {}, digestVersion: 1, narrative: '',
+      insights: [{ kind: 'dead_click', at: 1 }], status: 'done',
+    });
+    const t = await timelineForProject(project.id, '24h');
+    expect(t.totals.sessions).toBe(1);
+    expect(t.totals.bySource.search).toBe(1);
+    expect(t.totals.engaged).toBe(1);
+    expect(t.totals.frustrated).toBe(1);
+    expect(t.totals.newVisitors).toBe(1);
+  });
+});
 
 const HOUR = 3600_000;
 const END = 1_700_000_000_000;
