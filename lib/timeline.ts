@@ -95,12 +95,16 @@ const fmtDelta = (cur: number, prev: number): { value: string; direction: 'up' |
 };
 
 /** Pure assembly: buckets + totals + period-over-period trends + spikes.
- * With comparePrevious=false (all-time), chips carry plain totals. */
+ * With comparePrevious=false (all-time), chips carry plain totals.
+ * The window start is aligned down to a bucket boundary (UTC) so a
+ * daily bar covers a real calendar day, not a now-anchored slice —
+ * otherwise the "19 Aug" bar would never match the 19 Aug sessions. */
 export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, windowMs: number, bucketMs: number, comparePrevious = true): TimelineData {
-  const windowStart = windowEnd - windowMs;
-  const prevStart = windowStart - windowMs;
+  const windowStart = Math.floor((windowEnd - windowMs) / bucketMs) * bucketMs;
+  const realWindowMs = windowEnd - windowStart;
+  const prevStart = windowStart - realWindowMs;
 
-  const bucketCount = Math.ceil(windowMs / bucketMs);
+  const bucketCount = Math.ceil(realWindowMs / bucketMs);
   const buckets: TimelineBucket[] = Array.from({ length: bucketCount }, (_, i) => ({
     start: windowStart + i * bucketMs,
     bySource: emptySources(),
@@ -141,7 +145,9 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
   const fruRate = pct(cur.frustrated, cur.sessions);
   const fruPrev = pct(prev.frustrated, prev.sessions);
   trends.push({ label: 'Frustration', value: `${Math.round(fruRate)}%`, direction: comparePrevious && fruRate > fruPrev + 2 ? 'up' : comparePrevious && fruRate < fruPrev - 2 ? 'down' : 'flat' });
-  trends.push({ label: 'New visitors', value: `${Math.round(pct(cur.newVisitors, Math.max(1, cur.sessions)))}%`, direction: 'flat' });
+  // Share of *sessions* from first-time visitors — matches the
+  // new-vs-returning split, not the distinct-visitor count.
+  trends.push({ label: 'New visitors', value: `${Math.round(pct(cur.newSessions, Math.max(1, cur.sessions)))}%`, direction: 'flat' });
   if (comparePrevious) {
     // Emerging source: biggest share-point gain vs the previous window.
     let emerging: { s: SourceCategory; gain: number } | null = null;
@@ -212,20 +218,104 @@ export async function timelineForProject(projectId: string, rangeKey: string): P
     const start = rows0[0]?.min ? new Date(rows0[0].min).getTime() : windowEnd - 86_400_000;
     const windowMs = Math.max(86_400_000, windowEnd - start);
     const bucketMs = windowMs <= 2 * 86_400_000 ? 3600_000 : windowMs <= 90 * 86_400_000 ? 86_400_000 : 7 * 86_400_000;
-    const rows = await timelineRowsForProject(projectId, windowEnd, windowMs);
+    // +bucketMs: bucket alignment can pull the window start earlier.
+    const rows = await timelineRowsForProject(projectId, windowEnd, windowMs + bucketMs);
     return buildTimeline(rows, windowEnd, windowMs, bucketMs, false);
   }
   const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
-  const rows = await timelineRowsForProject(projectId, windowEnd, range.windowMs);
+  const rows = await timelineRowsForProject(projectId, windowEnd, range.windowMs + range.bucketMs);
   return buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs);
 }
 
-export async function timelineAnalysis(projectId: string, rangeKey: string): Promise<string> {
+export interface TimelinePatterns { peaks: string; quiet: string; opportunity: string; watch: string }
+
+const fmtBucketTime = (ms: number, hourly: boolean): string => {
+  const d = new Date(ms);
+  return hourly
+    ? d.toLocaleString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+    : d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
+};
+
+/** Deterministic aggregates the pattern analyst reasons over: peak
+ * buckets, the longest quiet stretch, day/hour rhythm, mix and rates. */
+export function buildPatternInput(data: TimelineData): string {
+  const { buckets, totals, bucketMs } = data;
+  const hourly = bucketMs < 86_400_000;
+  const unit = hourly ? 'hour' : bucketMs >= 7 * 86_400_000 ? 'week' : 'day';
+  const mean = totals.sessions / Math.max(1, buckets.length);
+  const lines: string[] = [];
+
+  const top = [...buckets].filter((b) => b.total > 0).sort((a, b) => b.total - a.total).slice(0, 3);
+  if (top.length > 0) {
+    lines.push(`Busiest ${unit}s: ${top.map((b) => `${fmtBucketTime(b.start, hourly)} (${b.total} sessions)`).join(', ')}.`);
+  }
+
+  // Longest run of near-dead buckets (≤ 25% of the window's mean).
+  const threshold = mean * 0.25;
+  let bestStart = -1, bestLen = 0, runStart = -1, runLen = 0;
+  buckets.forEach((b, i) => {
+    if (b.total <= threshold) {
+      if (runLen === 0) runStart = i;
+      runLen++;
+      if (runLen > bestLen) { bestLen = runLen; bestStart = runStart; }
+    } else runLen = 0;
+  });
+  if (bestLen >= 2) {
+    const from = fmtBucketTime(buckets[bestStart].start, hourly);
+    const to = fmtBucketTime(buckets[bestStart + bestLen - 1].start + bucketMs, hourly);
+    lines.push(`Quietest stretch: ${bestLen} ${unit}s nearly dead (${from} to ${to}).`);
+  }
+
+  // Rhythm: average sessions per hour-of-day (hourly buckets) or per
+  // weekday (daily buckets) — the shape recurring traffic follows.
+  if (unit !== 'week' && buckets.length >= (hourly ? 24 : 7)) {
+    const sums = new Map<string, { n: number; c: number }>();
+    for (const b of buckets) {
+      const d = new Date(b.start);
+      const key = hourly ? `${String(d.getUTCHours()).padStart(2, '0')}:00 UTC` : d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+      const e = sums.get(key) ?? { n: 0, c: 0 };
+      e.n += b.total; e.c++;
+      sums.set(key, e);
+    }
+    const avgs = [...sums.entries()].map(([k, v]) => [k, v.n / v.c] as const).sort((a, b) => b[1] - a[1]);
+    if (avgs.length >= 3 && avgs[0][1] > 0) {
+      lines.push(`Typical rhythm: strongest around ${avgs[0][0]} (avg ${avgs[0][1].toFixed(1)}/${unit}), weakest around ${avgs[avgs.length - 1][0]} (avg ${avgs[avgs.length - 1][1].toFixed(1)}/${unit}).`);
+    }
+  }
+
+  lines.push(`Totals: ${totals.sessions} sessions; ${Math.round(pct(totals.engaged, totals.sessions))}% engaged 30s+; avg duration ${Math.round(totals.avgDurationMs / 1000)}s; ${Math.round(pct(totals.newSessions, totals.sessions))}% from new visitors.`);
+  const srcs = SOURCE_CATEGORIES.filter((s) => totals.bySource[s] > 0)
+    .sort((a, b) => totals.bySource[b] - totals.bySource[a])
+    .map((s) => `${SOURCE_META[s].label} ${Math.round(pct(totals.bySource[s], totals.sessions))}%`);
+  if (srcs.length > 0) lines.push(`Sources: ${srcs.join(', ')}.`);
+  const fric = Object.entries(totals.insightCounts).sort(([, a], [, b]) => b - a).slice(0, 3)
+    .map(([k, n]) => `${k.replace(/_/g, ' ')} ×${n}`);
+  if (fric.length > 0) lines.push(`Top friction: ${fric.join(', ')}.`);
+  return lines.join('\n');
+}
+
+const PATTERN_LABELS = ['Peaks', 'Quiet', 'Opportunity', 'Watch'] as const;
+
+/** Parse the analyst's 4 labeled lines; null when fewer than 3 landed. */
+export function parsePatterns(text: string): TimelinePatterns | null {
+  const out: Record<string, string> = {};
+  for (const label of PATTERN_LABELS) {
+    const m = text.match(new RegExp(`^\\s*(?:[-*]\\s*)?(?:\\*\\*)?${label}(?:\\*\\*)?\\s*:\\s*(.+)$`, 'mi'));
+    if (m) out[label.toLowerCase()] = m[1].replace(/\*+/g, '').trim();
+  }
+  if (Object.keys(out).length < 3) return null;
+  return {
+    peaks: out.peaks ?? '', quiet: out.quiet ?? '',
+    opportunity: out.opportunity ?? '', watch: out.watch ?? '',
+  };
+}
+
+export async function timelineAnalysis(projectId: string, rangeKey: string): Promise<{ analysis: string; patterns: TimelinePatterns | null }> {
   const key = TIMELINE_RANGES[rangeKey] ? rangeKey : DEFAULT_RANGE;
-  const [row] = await db.select({ analysis: schema.timelineAnalyses.analysis })
+  const [row] = await db.select({ analysis: schema.timelineAnalyses.analysis, patterns: schema.timelineAnalyses.patterns })
     .from(schema.timelineAnalyses)
     .where(and(eq(schema.timelineAnalyses.projectId, projectId), eq(schema.timelineAnalyses.rangeKey, key)));
-  return row?.analysis ?? '';
+  return { analysis: row?.analysis ?? '', patterns: (row?.patterns as TimelinePatterns | null) ?? null };
 }
 
 const ANALYSIS_STALE_MS = 6 * 3600_000;
@@ -240,10 +330,10 @@ export async function refreshTimelineAnalyses(fetchFn: typeof fetch = fetch): Pr
   let refreshed = 0;
   for (const p of projects) {
     for (const rangeKey of Object.keys(TIMELINE_RANGES)) {
-      const [existing] = await db.select({ builtAt: schema.timelineAnalyses.builtAt })
+      const [existing] = await db.select({ builtAt: schema.timelineAnalyses.builtAt, patterns: schema.timelineAnalyses.patterns })
         .from(schema.timelineAnalyses)
         .where(and(eq(schema.timelineAnalyses.projectId, p.id), eq(schema.timelineAnalyses.rangeKey, rangeKey)));
-      if (existing && Date.now() - existing.builtAt.getTime() < ANALYSIS_STALE_MS) continue;
+      if (existing && existing.patterns !== null && Date.now() - existing.builtAt.getTime() < ANALYSIS_STALE_MS) continue;
       const data = await timelineForProject(p.id, rangeKey);
       if (data.totals.sessions === 0) continue;
       const input = [
@@ -254,35 +344,47 @@ export async function refreshTimelineAnalyses(fetchFn: typeof fetch = fetch): Pr
           `Spike at ${new Date(b.start).toISOString()}: ${b.total} sessions (${b.spike!.factor}x normal), mostly ${SOURCE_META[b.spike!.dominant].label}.`)),
       ].join('\n');
       try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 60_000);
-        let analysis = '';
-        try {
-          const res = await fetchFn(`${baseUrl.replace(/\/$/, '')}/v1/chat/completions`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            signal: ctrl.signal,
-            body: JSON.stringify({
-              messages: [
-                { role: 'system', content: 'You are an expert web-traffic analyst. Given period metrics for a website, write a concise 2-3 sentence read: what changed in this window, the likely driver, and the single most useful implication. Plain text, no preamble.' },
-                { role: 'user', content: input },
-              ],
-              max_tokens: 160,
-              temperature: 0.3,
-            }),
-          });
-          if (!res.ok) throw new Error(`summarizer ${res.status}`);
-          const json = await res.json() as { choices?: { message?: { content?: string } }[] };
-          analysis = json.choices?.[0]?.message?.content?.trim() ?? '';
-        } finally {
-          clearTimeout(timer);
-        }
+        const chat = async (system: string, user: string, maxTokens: number): Promise<string> => {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 60_000);
+          try {
+            const res = await fetchFn(`${baseUrl.replace(/\/$/, '')}/v1/chat/completions`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              signal: ctrl.signal,
+              body: JSON.stringify({
+                messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+                max_tokens: maxTokens,
+                temperature: 0.3,
+              }),
+            });
+            if (!res.ok) throw new Error(`summarizer ${res.status}`);
+            const json = await res.json() as { choices?: { message?: { content?: string } }[] };
+            return json.choices?.[0]?.message?.content?.trim() ?? '';
+          } finally {
+            clearTimeout(timer);
+          }
+        };
+
+        const analysis = await chat(
+          'You are an expert web-traffic analyst. Given period metrics for a website, write a concise 2-3 sentence read: what changed in this window, the likely driver, and the single most useful implication. Plain text, no preamble.',
+          input, 160,
+        );
         if (!analysis) continue;
+
+        // Patterns: peak/dead times and what to do about them, from
+        // deterministic aggregates — parsed from 4 labeled lines.
+        const patternsRaw = await chat(
+          "You are an expert web-traffic analyst. Given aggregated timeline metrics for a website, respond with exactly 4 lines, each starting with its label: 'Peaks:', 'Quiet:', 'Opportunity:', 'Watch:'. Peaks = when traffic concentrates and why it matters. Quiet = dead times and what they imply. Opportunity = the single most actionable opening in these numbers. Watch = the metric or pattern most worth monitoring. One or two plain, concrete sentences per line, grounded in the numbers given. No preamble, no extra lines.",
+          buildPatternInput(data), 320,
+        );
+        const patterns = parsePatterns(patternsRaw);
+
         await db.insert(schema.timelineAnalyses)
-          .values({ projectId: p.id, rangeKey, analysis })
+          .values({ projectId: p.id, rangeKey, analysis, patterns })
           .onConflictDoUpdate({
             target: [schema.timelineAnalyses.projectId, schema.timelineAnalyses.rangeKey],
-            set: { analysis, builtAt: new Date() },
+            set: { analysis, patterns, builtAt: new Date() },
           });
         refreshed++;
       } catch (e) {

@@ -246,6 +246,7 @@ export const timelineAnalyses = pgTable('timeline_analyses', {
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   rangeKey: text('range_key').notNull(),
   analysis: text('analysis').notNull().default(''),
+  patterns: jsonb('patterns'),
   builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   projectRangeIdx: uniqueIndex('timeline_analyses_project_range_idx').on(t.projectId, t.rangeKey),

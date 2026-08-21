@@ -1,0 +1,1 @@
+ALTER TABLE "timeline_analyses" ADD COLUMN "patterns" jsonb;

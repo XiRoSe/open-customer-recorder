@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildTimeline, timelineForProject, type TimelineSessionRow } from './timeline';
+import { buildTimeline, buildPatternInput, parsePatterns, timelineForProject, type TimelineSessionRow } from './timeline';
 import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
@@ -57,18 +57,19 @@ function row(hoursAgo: number, over: Partial<TimelineSessionRow> = {}): Timeline
 }
 
 describe('buildTimeline', () => {
-  it('buckets sessions hourly and categorizes sources', () => {
+  it('buckets sessions on calendar-aligned hourly boundaries', () => {
     const rows = [
       row(1.5, { referrer: 'https://www.google.com/' }),
       row(1.2),
       row(5.5, { referrer: 'https://www.linkedin.com/' }),
     ];
     const t = buildTimeline(rows, END, WINDOW, HOUR);
-    expect(t.buckets).toHaveLength(24);
-    const b22 = t.buckets[22]; // 1-2 hours ago
-    expect(b22.total).toBe(2);
-    expect(b22.bySource.search).toBe(1);
-    expect(b22.bySource.direct).toBe(1);
+    // END sits 13m20s past the hour, so aligning the start down to a
+    // real hour boundary yields a 25th (partial) bucket.
+    expect(t.buckets).toHaveLength(25);
+    expect(t.windowStart % HOUR).toBe(0);
+    expect(t.buckets[22].bySource.search).toBe(1);  // 1.5h ago → hour :43
+    expect(t.buckets[23].bySource.direct).toBe(1);  // 1.2h ago → next hour :01
     expect(t.buckets[18].bySource.social).toBe(1);
     expect(t.totals.sessions).toBe(3);
   });
@@ -136,6 +137,20 @@ describe('buildTimeline', () => {
     expect(t.totals.sessions - t.totals.newSessions).toBe(1);
   });
 
+  it('new-visitor chip reflects share of sessions, matching the split bar', () => {
+    const old = new Date(END - 40 * HOUR);
+    const rows = [
+      row(2, { visitorKey: 'returning', firstSeenAt: old }),
+      row(3, { visitorKey: 'fresh-a' }),
+      row(4, { visitorKey: 'fresh-b' }),
+      row(5, { visitorKey: 'fresh-b' }),
+    ];
+    const t = buildTimeline(rows, END, WINDOW, HOUR);
+    // 3 of 4 sessions are from first-time visitors → 75%, even though
+    // only 2 distinct new visitors exist.
+    expect(t.trends.find((c) => c.label === 'New visitors')!.value).toBe('75%');
+  });
+
   it('aggregates avg duration and per-kind friction counts', () => {
     const rows = [
       row(2, { durationMs: 10_000, insightKinds: ['dead_click', 'dead_click'] }),
@@ -144,5 +159,40 @@ describe('buildTimeline', () => {
     const t = buildTimeline(rows, END, WINDOW, HOUR);
     expect(t.totals.avgDurationMs).toBe(20_000);
     expect(t.totals.insightCounts).toEqual({ dead_click: 2, rage_click: 1 });
+  });
+});
+
+describe('buildPatternInput', () => {
+  it('surfaces busiest buckets, quiet stretches, and totals', () => {
+    const rows = [
+      ...Array.from({ length: 6 }, (_, i) => row(3.5, { visitorKey: `p${i}` })),
+      row(20.5), row(21.5),
+    ];
+    const t = buildTimeline(rows, END, WINDOW, HOUR);
+    const input = buildPatternInput(t);
+    expect(input).toContain('Busiest hours:');
+    expect(input).toContain('(6 sessions)');
+    expect(input).toContain('Quietest stretch:');
+    expect(input).toContain('Totals: 8 sessions');
+    expect(input).toContain('Sources: Direct 100%');
+  });
+});
+
+describe('parsePatterns', () => {
+  it('parses the 4 labeled lines', () => {
+    const p = parsePatterns('Peaks: Mornings dominate.\nQuiet: Nights are dead.\nOpportunity: Schedule launches at 09:00.\nWatch: Frustration rate.');
+    expect(p).toEqual({
+      peaks: 'Mornings dominate.', quiet: 'Nights are dead.',
+      opportunity: 'Schedule launches at 09:00.', watch: 'Frustration rate.',
+    });
+  });
+
+  it('tolerates markdown bullets and bold labels, and a missing line', () => {
+    const p = parsePatterns('- **Peaks**: Mid-week.\n* Quiet: Weekends.\n**Opportunity:** Push ads Tuesday.');
+    expect(p).toEqual({ peaks: 'Mid-week.', quiet: 'Weekends.', opportunity: 'Push ads Tuesday.', watch: '' });
+  });
+
+  it('rejects output with fewer than 3 recognizable lines', () => {
+    expect(parsePatterns('Traffic looks fine overall, nothing to note.')).toBeNull();
   });
 });
