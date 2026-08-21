@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db, schema } from '@/lib/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { clustersDataForProject, MIN_PROFILES_TO_CLUSTER } from '@/lib/user-segments';
 import { ClusterMap } from '@/components/cluster-map';
