@@ -16,8 +16,18 @@ const DIMENSION_LABELS: Record<string, string> = {
   experience: 'Experience',
 };
 
+// Short, high-level key shown top-left; the full sentence rides each
+// chip's hover title.
+const DIMENSION_KEY: Record<string, string> = {
+  overall: 'everything combined',
+  persona: 'who they are',
+  intent: 'what they want',
+  source: 'where they came from',
+  experience: 'how it went for them',
+};
+
 const DIMENSION_GLOSSARY: Record<string, string> = {
-  overall: 'Everything combined — positioned at the average of the four dimension points.',
+  overall: 'Everything combined — positioned at the average of the four dimension points. One dot = one visitor; closer = more similar; hover for the analysis, click for their sessions.',
   persona: 'Who the visitor appears to be: role, sophistication, context.',
   intent: 'What they are trying to achieve across their visits.',
   source: 'Where they came from and why: referrers, entry pages, campaigns.',
@@ -92,22 +102,37 @@ export function ClusterMap({ dims, sessionsBasePath }: {
 
   return (
     <div className="space-y-3">
-      {/* dimension switcher */}
-      <div className="flex flex-wrap gap-1.5">
-        {dims.map((d) => (
-          <button
-            key={d.dimension}
-            type="button"
-            onClick={() => { setDimKey(d.dimension); setFocusSegment(null); setHover(null); }}
-            className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
-              d.dimension === dim.dimension
-                ? 'bg-foreground text-background border-foreground'
-                : 'text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {DIMENSION_LABELS[d.dimension] ?? d.dimension}
-          </button>
-        ))}
+      {/* header: high-level dimension key (left) · dimension switcher (right) */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="text-xs text-muted-foreground max-w-md">
+          <div className="text-[11px] font-medium uppercase tracking-wider mb-1">Research dimensions</div>
+          <p className="m-0 leading-relaxed">
+            {dims.map((d, i) => (
+              <span key={d.dimension}>
+                {i > 0 && <span className="mx-1.5 opacity-60">·</span>}
+                <span className="font-medium text-foreground/80">{DIMENSION_LABELS[d.dimension]}</span>
+                {' '}{DIMENSION_KEY[d.dimension]}
+              </span>
+            ))}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {dims.map((d) => (
+            <button
+              key={d.dimension}
+              type="button"
+              title={DIMENSION_GLOSSARY[d.dimension]}
+              onClick={() => { setDimKey(d.dimension); setFocusSegment(null); setHover(null); }}
+              className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
+                d.dimension === dim.dimension
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {DIMENSION_LABELS[d.dimension] ?? d.dimension}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* batch-level analyst read for this dimension */}
@@ -218,28 +243,6 @@ export function ClusterMap({ dims, sessionsBasePath }: {
             <p className="text-muted-foreground m-0 leading-snug">{hover.excerpt}…</p>
           </div>
         )}
-      </div>
-
-      {/* how to read this map */}
-      <div className="rounded-md border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        <div className="text-[11px] font-medium uppercase tracking-wider mb-1.5">Legend</div>
-        <div className="flex flex-wrap gap-x-5 gap-y-1">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-foreground/70 shrink-0" aria-hidden />
-            one dot = one visitor, colored by segment
-          </span>
-          <span>closer dots = more similar {DIMENSION_LABELS[dim.dimension]?.toLowerCase()} descriptions</span>
-          <span>hover a dot = the sentence behind it · click = that visitor&apos;s sessions</span>
-          <span>hover a segment card = spotlight its visitors</span>
-        </div>
-        <div className="mt-2 pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5">
-          {dims.map((d) => (
-            <span key={d.dimension}>
-              <span className="font-medium text-foreground/80">{DIMENSION_LABELS[d.dimension]}</span>
-              {' — '}{DIMENSION_GLOSSARY[d.dimension]}
-            </span>
-          ))}
-        </div>
       </div>
 
       {/* segments of the selected dimension — hover to spotlight */}
