@@ -130,16 +130,9 @@ export function ClusterMap({ dims, sessionsBasePath }: {
         <style>{`
           @keyframes dot-pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
           .cluster-dot-pop { animation: dot-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; transform-box: fill-box; transform-origin: center; }
-          @keyframes radar-sweep {
-            0% { transform: rotate(0deg); opacity: 0.9; }
-            80% { opacity: 0.9; }
-            100% { transform: rotate(360deg); opacity: 0; }
-          }
-          .cluster-sweep { animation: radar-sweep 1.4s cubic-bezier(0.45, 0, 0.2, 1) forwards; }
           @media (prefers-reduced-motion: reduce) {
             .cluster-dot-pop { animation: none; }
             .cluster-dot-move { transition: none !important; }
-            .cluster-sweep { animation: none; opacity: 0; }
           }
         `}</style>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
@@ -162,12 +155,6 @@ export function ClusterMap({ dims, sessionsBasePath }: {
             ))}
           </g>
 
-          {/* one-shot radar sweep — replays on every dimension switch */}
-          <g key={`sweep-${dim.dimension}`} className="cluster-sweep" style={{ transformOrigin: `${W / 2}px ${H / 2}px` }}>
-            <line x1={W / 2} y1={H / 2} x2={W / 2 + 215} y2={H / 2} stroke={BRASS} strokeWidth="1.5" opacity="0.7" />
-            <path d={`M ${W / 2} ${H / 2} L ${W / 2 + 215} ${H / 2} A 215 215 0 0 0 ${W / 2 + 215 * Math.cos(-0.5)} ${H / 2 + 215 * Math.sin(-0.5)} Z`}
-                  fill={BRASS} opacity="0.08" stroke="none" />
-          </g>
           {placed.map(({ key, pt }, i) => {
             if (!pt) return null;
             const dimmed = focusSegment !== null && pt.segmentId !== focusSegment;
