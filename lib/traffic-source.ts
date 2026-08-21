@@ -5,13 +5,15 @@
 export const SOURCE_CATEGORIES = ['search', 'referral', 'ads', 'social', 'internal', 'direct'] as const;
 export type SourceCategory = (typeof SOURCE_CATEGORIES)[number];
 
+// Grayscale ramp (user's direction): identity by lightness step in fixed
+// order, backed everywhere by the legend, hover breakdown, and table.
 export const SOURCE_META: Record<SourceCategory, { label: string; color: string }> = {
-  search: { label: 'Search', color: '#059669' },
-  referral: { label: 'Referral', color: '#7c3aed' },
-  ads: { label: 'Ads', color: '#d97706' },
-  social: { label: 'Social', color: '#0284c7' },
-  internal: { label: 'Internal', color: '#92400e' },
-  direct: { label: 'Direct', color: '#db2777' },
+  search: { label: 'Search', color: '#18181b' },
+  referral: { label: 'Referral', color: '#3f3f46' },
+  ads: { label: 'Ads', color: '#71717a' },
+  social: { label: 'Social', color: '#a1a1aa' },
+  internal: { label: 'Internal', color: '#d4d4d8' },
+  direct: { label: 'Direct', color: '#52525b' },
 };
 
 const SEARCH_HOSTS = ['google.', 'bing.', 'duckduckgo.', 'yahoo.', 'yandex.', 'baidu.', 'ecosia.', 'search.brave.'];

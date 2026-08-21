@@ -10,6 +10,15 @@ import { Card } from '@/components/ui/card';
 
 const DIRECTION_GLYPH: Record<string, string> = { up: '▲', down: '▼', flat: '—' };
 
+// Short, plain explanations of each measurement — shown on hover.
+const CHIP_EXPLAINERS: Record<string, string> = {
+  'Sessions': 'Recorded visits in this window.',
+  'Engaged (30s+)': 'Share of sessions lasting at least 30 seconds.',
+  'Frustration': 'Share of sessions with at least one frustration signal: rage clicks, dead clicks, abandoned forms, refresh loops.',
+  'New visitors': 'Share of sessions from visitors seen here for the first time.',
+  'Emerging source': 'The traffic source whose share grew the most.',
+};
+
 export default async function TimelinePage(props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ range?: string }>;
@@ -37,9 +46,9 @@ export default async function TimelinePage(props: {
           <p className="text-sm text-muted-foreground">
             {data.totals.sessions.toLocaleString()} {data.totals.sessions === 1 ? 'session' : 'sessions'} in the {TIMELINE_RANGES[rangeKey].label}
             {data.totals.sessions > 0 ? <>
-              {' '}· <span className="font-medium text-foreground">{data.totals.engaged}</span> engaged
-              {' '}· <span className="font-medium text-foreground">{data.totals.frustrated}</span> with friction
-              {' '}· <span className="font-medium text-foreground">{data.totals.newVisitors}</span> new {data.totals.newVisitors === 1 ? 'visitor' : 'visitors'}
+              {' '}· <span className="font-medium text-foreground cursor-help" title="Sessions lasting at least 30 seconds.">{data.totals.engaged} engaged</span>
+              {' '}· <span className="font-medium text-foreground cursor-help" title="Sessions with at least one frustration signal: rage clicks, dead clicks, abandoned forms, refresh loops.">{data.totals.frustrated} with friction</span>
+              {' '}· <span className="font-medium text-foreground cursor-help" title="Visitors recorded here for the first time in this window.">{data.totals.newVisitors} new {data.totals.newVisitors === 1 ? 'visitor' : 'visitors'}</span>
             </> : null}
           </p>
         </div>
@@ -86,7 +95,7 @@ export default async function TimelinePage(props: {
                 : t.direction === 'down' ? 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
                 : 'text-muted-foreground'
               }`}
-              title={`${t.label}, compared to the previous ${TIMELINE_RANGES[rangeKey].label.replace('last ', '')}`}
+              title={`${CHIP_EXPLAINERS[t.label] ?? t.label}${rangeKey !== 'all' ? ` Compared with the previous ${TIMELINE_RANGES[rangeKey].label.replace('last ', '')}.` : ''}`}
             >
               <span aria-hidden>{DIRECTION_GLYPH[t.direction]}</span>
               {t.label}: {t.value}
@@ -112,27 +121,93 @@ export default async function TimelinePage(props: {
         </Card>
       )}
 
-      {/* table view of the same data — sources over the window */}
+      {/* measurement breakdowns — one titled section per lens */}
       {data.totals.sessions > 0 && (
-        <Card className="p-0 divide-y">
-          {SOURCE_CATEGORIES.filter((s) => data.totals.bySource[s] > 0)
-            .sort((a, b) => data.totals.bySource[b] - data.totals.bySource[a])
-            .map((s) => {
-              const n = data.totals.bySource[s];
-              const share = Math.round((100 * n) / data.totals.sessions);
-              return (
-                <div key={s} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                  <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: SOURCE_META[s].color }} />
-                  <span className="w-20">{SOURCE_META[s].label}</span>
-                  <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${share}%`, background: SOURCE_META[s].color }} />
-                  </div>
-                  <span className="tabular-nums text-muted-foreground w-20 text-right">{n} · {share}%</span>
-                </div>
-              );
-            })}
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-4">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                 title="Where sessions came from, derived from each session's referrer and entry URL.">Traffic sources</div>
+            <div className="space-y-2.5">
+              {SOURCE_CATEGORIES.filter((s) => data.totals.bySource[s] > 0)
+                .sort((a, b) => data.totals.bySource[b] - data.totals.bySource[a])
+                .map((s) => {
+                  const n = data.totals.bySource[s];
+                  const share = Math.round((100 * n) / data.totals.sessions);
+                  return (
+                    <div key={s} className="flex items-center gap-3 text-sm">
+                      <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: SOURCE_META[s].color }} />
+                      <span className="w-16">{SOURCE_META[s].label}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${share}%`, background: SOURCE_META[s].color }} />
+                      </div>
+                      <span className="tabular-nums text-muted-foreground w-20 text-right">{n} · {share}%</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                 title="How deeply visitors engaged, and how many are seeing the site for the first time.">Engagement &amp; visitors</div>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div>
+                <div className="text-xl font-semibold tabular-nums" title="Mean recorded session length in this window.">{fmtDur(data.totals.avgDurationMs)}</div>
+                <div className="text-xs text-muted-foreground">Avg session</div>
+              </div>
+              <div>
+                <div className="text-xl font-semibold tabular-nums" title="Sessions lasting at least 30 seconds.">{Math.round((100 * data.totals.engaged) / data.totals.sessions)}%</div>
+                <div className="text-xs text-muted-foreground">Engaged (30s+)</div>
+              </div>
+              <div>
+                <div className="text-xl font-semibold tabular-nums" title="Distinct visitors recorded here for the first time in this window.">{data.totals.newVisitors}</div>
+                <div className="text-xs text-muted-foreground">New visitors</div>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground mb-1.5" title="Sessions from first-time visitors vs visitors who had been here before this window.">
+              New vs returning sessions
+            </div>
+            <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+              <div className="bg-foreground/80" style={{ width: `${Math.round((100 * data.totals.newSessions) / data.totals.sessions)}%` }} />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground mt-1 tabular-nums">
+              <span>{data.totals.newSessions} new</span>
+              <span>{data.totals.sessions - data.totals.newSessions} returning</span>
+            </div>
+          </Card>
+
+          {Object.keys(data.totals.insightCounts).length > 0 && (
+            <Card className="p-4 lg:col-span-2">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                   title="Frustration signals detected automatically in this window's sessions.">Friction signals</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {Object.entries(data.totals.insightCounts)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([kind, n]) => (
+                    <div key={kind}>
+                      <div className="text-xl font-semibold tabular-nums">{n}</div>
+                      <div className="text-xs text-muted-foreground">{INSIGHT_LABELS[kind] ?? kind}</div>
+                    </div>
+                  ))}
+              </div>
+            </Card>
+          )}
+        </div>
       )}
     </main>
   );
 }
+
+function fmtDur(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+const INSIGHT_LABELS: Record<string, string> = {
+  rage_click: 'Rage clicks',
+  dead_click: 'Dead clicks',
+  form_abandon: 'Forms abandoned',
+  uturn: 'Navigation U-turns',
+  pogo_stick: 'Pogo-sticking',
+  refresh_loop: 'Refresh loops',
+};

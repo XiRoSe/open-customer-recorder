@@ -12,6 +12,9 @@ export const TIMELINE_RANGES: Record<string, { windowMs: number; bucketMs: numbe
   '24h': { windowMs: 24 * 3600_000, bucketMs: 3600_000, label: 'last 24 hours' },
   '7d': { windowMs: 7 * 86_400_000, bucketMs: 86_400_000, label: 'last 7 days' },
   '30d': { windowMs: 30 * 86_400_000, bucketMs: 86_400_000, label: 'last 30 days' },
+  // Sentinel: window resolved at runtime from the first recorded session;
+  // no previous-window comparison (there is no previous window).
+  'all': { windowMs: 0, bucketMs: 0, label: 'full recorded history' },
 };
 export const DEFAULT_RANGE = '7d';
 const ENGAGED_MS = 30_000;
@@ -26,6 +29,7 @@ export interface TimelineSessionRow {
   visitorKey: string;
   firstSeenAt: Date;
   frustrated: boolean;
+  insightKinds?: string[];
 }
 
 export interface TimelineBucket {
@@ -37,9 +41,20 @@ export interface TimelineBucket {
 
 export interface TrendChip { label: string; value: string; direction: 'up' | 'down' | 'flat' }
 
+export interface TimelineTotals {
+  sessions: number;
+  engaged: number;
+  frustrated: number;
+  newVisitors: number;
+  newSessions: number;
+  avgDurationMs: number;
+  insightCounts: Record<string, number>;
+  bySource: Record<SourceCategory, number>;
+}
+
 export interface TimelineData {
   buckets: TimelineBucket[];
-  totals: { sessions: number; engaged: number; frustrated: number; newVisitors: number; bySource: Record<SourceCategory, number> };
+  totals: TimelineTotals;
   trends: TrendChip[];
   windowStart: number;
   windowEnd: number;
@@ -50,18 +65,26 @@ function emptySources(): Record<SourceCategory, number> {
   return Object.fromEntries(SOURCE_CATEGORIES.map((s) => [s, 0])) as Record<SourceCategory, number>;
 }
 
-function windowStats(rows: TimelineSessionRow[], start: number, end: number) {
+function windowStats(rows: TimelineSessionRow[], start: number, end: number): TimelineTotals {
   const inWindow = rows.filter((r) => r.startedAt.getTime() >= start && r.startedAt.getTime() < end);
   const bySource = emptySources();
-  let engaged = 0, frustrated = 0;
+  const insightCounts: Record<string, number> = {};
+  let engaged = 0, frustrated = 0, newSessions = 0, durSum = 0;
   const newVisitors = new Set<string>();
   for (const r of inWindow) {
     bySource[categorizeSource(r.referrer, r.pageUrl)]++;
     if ((r.durationMs ?? 0) >= ENGAGED_MS) engaged++;
     if (r.frustrated) frustrated++;
-    if (r.firstSeenAt.getTime() >= start) newVisitors.add(r.visitorKey);
+    durSum += r.durationMs ?? 0;
+    if (r.firstSeenAt.getTime() >= start) { newVisitors.add(r.visitorKey); newSessions++; }
+    for (const k of r.insightKinds ?? []) insightCounts[k] = (insightCounts[k] ?? 0) + 1;
   }
-  return { sessions: inWindow.length, engaged, frustrated, newVisitors: newVisitors.size, bySource };
+  return {
+    sessions: inWindow.length, engaged, frustrated,
+    newVisitors: newVisitors.size, newSessions,
+    avgDurationMs: inWindow.length > 0 ? durSum / inWindow.length : 0,
+    insightCounts, bySource,
+  };
 }
 
 const pct = (n: number, d: number) => (d > 0 ? (100 * n) / d : 0);
@@ -71,8 +94,9 @@ const fmtDelta = (cur: number, prev: number): { value: string; direction: 'up' |
   return { value: `${d > 0 ? '+' : ''}${d}%`, direction: d > 2 ? 'up' : d < -2 ? 'down' : 'flat' };
 };
 
-/** Pure assembly: buckets + totals + period-over-period trends + spikes. */
-export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, windowMs: number, bucketMs: number): TimelineData {
+/** Pure assembly: buckets + totals + period-over-period trends + spikes.
+ * With comparePrevious=false (all-time), chips carry plain totals. */
+export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, windowMs: number, bucketMs: number, comparePrevious = true): TimelineData {
   const windowStart = windowEnd - windowMs;
   const prevStart = windowStart - windowMs;
 
@@ -105,23 +129,29 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
   const prev = windowStats(rows, prevStart, windowStart);
 
   const trends: TrendChip[] = [];
-  const sessionsDelta = fmtDelta(cur.sessions, prev.sessions);
-  trends.push({ label: 'Sessions', value: `${cur.sessions} (${sessionsDelta.value})`, direction: sessionsDelta.direction });
+  if (comparePrevious) {
+    const sessionsDelta = fmtDelta(cur.sessions, prev.sessions);
+    trends.push({ label: 'Sessions', value: `${cur.sessions} (${sessionsDelta.value})`, direction: sessionsDelta.direction });
+  } else {
+    trends.push({ label: 'Sessions', value: `${cur.sessions}`, direction: 'flat' });
+  }
   const engRate = pct(cur.engaged, cur.sessions);
   const engPrev = pct(prev.engaged, prev.sessions);
-  trends.push({ label: 'Engaged (30s+)', value: `${Math.round(engRate)}%`, direction: engRate > engPrev + 2 ? 'up' : engRate < engPrev - 2 ? 'down' : 'flat' });
+  trends.push({ label: 'Engaged (30s+)', value: `${Math.round(engRate)}%`, direction: comparePrevious && engRate > engPrev + 2 ? 'up' : comparePrevious && engRate < engPrev - 2 ? 'down' : 'flat' });
   const fruRate = pct(cur.frustrated, cur.sessions);
   const fruPrev = pct(prev.frustrated, prev.sessions);
-  trends.push({ label: 'Frustration', value: `${Math.round(fruRate)}%`, direction: fruRate > fruPrev + 2 ? 'up' : fruRate < fruPrev - 2 ? 'down' : 'flat' });
+  trends.push({ label: 'Frustration', value: `${Math.round(fruRate)}%`, direction: comparePrevious && fruRate > fruPrev + 2 ? 'up' : comparePrevious && fruRate < fruPrev - 2 ? 'down' : 'flat' });
   trends.push({ label: 'New visitors', value: `${Math.round(pct(cur.newVisitors, Math.max(1, cur.sessions)))}%`, direction: 'flat' });
-  // Emerging source: biggest share-point gain vs the previous window.
-  let emerging: { s: SourceCategory; gain: number } | null = null;
-  for (const s of SOURCE_CATEGORIES) {
-    const gain = pct(cur.bySource[s], cur.sessions) - pct(prev.bySource[s], prev.sessions);
-    if (cur.bySource[s] >= 3 && gain >= EMERGING_SHARE_PTS && (!emerging || gain > emerging.gain)) emerging = { s, gain };
-  }
-  if (emerging) {
-    trends.push({ label: 'Emerging source', value: `${SOURCE_META[emerging.s].label} +${Math.round(emerging.gain)}pts`, direction: 'up' });
+  if (comparePrevious) {
+    // Emerging source: biggest share-point gain vs the previous window.
+    let emerging: { s: SourceCategory; gain: number } | null = null;
+    for (const s of SOURCE_CATEGORIES) {
+      const gain = pct(cur.bySource[s], cur.sessions) - pct(prev.bySource[s], prev.sessions);
+      if (cur.bySource[s] >= 3 && gain >= EMERGING_SHARE_PTS && (!emerging || gain > emerging.gain)) emerging = { s, gain };
+    }
+    if (emerging) {
+      trends.push({ label: 'Emerging source', value: `${SOURCE_META[emerging.s].label} +${Math.round(emerging.gain)}pts`, direction: 'up' });
+    }
   }
 
   return { buckets, totals: cur, trends, windowStart, windowEnd, bucketMs };
@@ -133,7 +163,7 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
   const fetchStart = new Date(windowEnd - 2 * windowMs).toISOString();
   interface Row extends Record<string, unknown> {
     started_at: string; duration_ms: number | null; referrer: string | null; page_url: string | null;
-    visitor_key: string; first_seen_at: string; frustrated: boolean;
+    visitor_key: string; first_seen_at: string; frustrated: boolean; insights: { kind?: string }[] | null;
   }
   const res = await db.execute<Row>(sql`
     SELECT s.started_at, s.duration_ms, s.referrer, s.page_url,
@@ -142,7 +172,8 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
            EXISTS (
              SELECT 1 FROM ${schema.sessionSummaries} ss
              WHERE ss.session_id = s.id AND jsonb_array_length(ss.insights) > 0
-           ) AS frustrated
+           ) AS frustrated,
+           (SELECT ss2.insights FROM ${schema.sessionSummaries} ss2 WHERE ss2.session_id = s.id LIMIT 1) AS insights
     FROM ${schema.sessions} s
     JOIN LATERAL (
       SELECT min(s2.started_at) AS at FROM ${schema.sessions} s2
@@ -159,12 +190,26 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
     visitorKey: r.visitor_key,
     firstSeenAt: new Date(r.first_seen_at),
     frustrated: r.frustrated,
+    insightKinds: (r.insights ?? []).map((i) => i.kind).filter((k): k is string => Boolean(k)),
   }));
 }
 
 export async function timelineForProject(projectId: string, rangeKey: string): Promise<TimelineData> {
-  const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
   const windowEnd = Date.now();
+  if (rangeKey === 'all') {
+    interface MinRow extends Record<string, unknown> { min: string | null }
+    const res = await db.execute<MinRow>(sql`
+      SELECT min(started_at) AS min FROM ${schema.sessions}
+      WHERE project_id = ${projectId} AND event_count > 0
+    `);
+    const rows0: MinRow[] = Array.isArray(res) ? res : (res as unknown as { rows: MinRow[] }).rows ?? [];
+    const start = rows0[0]?.min ? new Date(rows0[0].min).getTime() : windowEnd - 86_400_000;
+    const windowMs = Math.max(86_400_000, windowEnd - start);
+    const bucketMs = windowMs <= 2 * 86_400_000 ? 3600_000 : windowMs <= 90 * 86_400_000 ? 86_400_000 : 7 * 86_400_000;
+    const rows = await timelineRowsForProject(projectId, windowEnd, windowMs);
+    return buildTimeline(rows, windowEnd, windowMs, bucketMs, false);
+  }
+  const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
   const rows = await timelineRowsForProject(projectId, windowEnd, range.windowMs);
   return buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs);
 }

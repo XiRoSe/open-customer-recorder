@@ -98,6 +98,17 @@ describe('buildTimeline', () => {
     expect(spike!.spike!.dominant).toBe('social');
   });
 
+  it('all-time mode: plain totals, no deltas, no emerging source', () => {
+    const rows = [
+      row(2, { pageUrl: 'https://x.test/?gclid=1' }), row(3, { pageUrl: 'https://x.test/?gclid=2' }),
+      row(4, { pageUrl: 'https://x.test/?gclid=3' }), row(5),
+    ];
+    const t = buildTimeline(rows, END, WINDOW, HOUR, false);
+    expect(t.trends.find((c) => c.label === 'Sessions')!.value).toBe('4');
+    expect(t.trends.find((c) => c.label === 'Emerging source')).toBeUndefined();
+    expect(t.trends.every((c) => c.direction === 'flat')).toBe(true);
+  });
+
   it('counts new visitors only when their first-ever session is in-window', () => {
     const old = new Date(END - 40 * HOUR);
     const rows = [
@@ -106,5 +117,17 @@ describe('buildTimeline', () => {
     ];
     const t = buildTimeline(rows, END, WINDOW, HOUR);
     expect(t.totals.newVisitors).toBe(1);
+    expect(t.totals.newSessions).toBe(1);
+    expect(t.totals.sessions - t.totals.newSessions).toBe(1);
+  });
+
+  it('aggregates avg duration and per-kind friction counts', () => {
+    const rows = [
+      row(2, { durationMs: 10_000, insightKinds: ['dead_click', 'dead_click'] }),
+      row(3, { durationMs: 30_000, insightKinds: ['rage_click'] }),
+    ];
+    const t = buildTimeline(rows, END, WINDOW, HOUR);
+    expect(t.totals.avgDurationMs).toBe(20_000);
+    expect(t.totals.insightCounts).toEqual({ dead_click: 2, rage_click: 1 });
   });
 });
