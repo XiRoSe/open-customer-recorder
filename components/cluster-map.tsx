@@ -92,6 +92,14 @@ export function ClusterMap({ dims, sessionsBasePath }: {
       )}
 
       <div className="relative">
+        <style>{`
+          @keyframes dot-pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+          .cluster-dot-pop { animation: dot-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; transform-box: fill-box; transform-origin: center; }
+          @media (prefers-reduced-motion: reduce) {
+            .cluster-dot-pop { animation: none; }
+            .cluster-dot-move { transition: none !important; }
+          }
+        `}</style>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
              aria-label={`Visitors positioned by ${dim.dimension} similarity, colored by segment`}>
           {[0.25, 0.5, 0.75].map((f) => (
@@ -100,25 +108,31 @@ export function ClusterMap({ dims, sessionsBasePath }: {
               <line y1={PAD} y2={H - PAD} x1={PAD + f * (W - PAD * 2)} x2={PAD + f * (W - PAD * 2)} strokeDasharray="2 6" />
             </g>
           ))}
-          {placed.map(({ key, pt }) => {
+          {placed.map(({ key, pt }, i) => {
             if (!pt) return null;
             const dimmed = focusSegment !== null && pt.segmentId !== focusSegment;
             const c = colorOf(pt.segmentId);
             return (
+              // Outer group glides on dimension switch; inner group pops
+              // on first mount (keyed by visitor, so switching dimensions
+              // never re-triggers the entrance).
               <g
                 key={key}
+                className="cluster-dot-move"
                 style={{ transform: `translate(${pt.cx}px, ${pt.cy}px)`, transition: 'transform 650ms cubic-bezier(0.22, 1, 0.36, 1)' }}
               >
-                <circle r={11} fill={c} opacity={dimmed ? 0.03 : 0.14} style={{ transition: 'fill 400ms, opacity 250ms' }} />
-                <circle
-                  r={5.5}
-                  fill={c} opacity={dimmed ? 0.15 : 0.92}
-                  stroke="white" strokeWidth="1.25"
-                  style={{ cursor: 'pointer', transition: 'fill 400ms, opacity 250ms' }}
-                  onMouseEnter={() => setHover({ visitorKey: key, excerpt: pt.excerpt, segmentId: pt.segmentId, cx: pt.cx, cy: pt.cy })}
-                  onMouseLeave={() => setHover(null)}
-                  onClick={() => router.push(`${sessionsBasePath}?user=${encodeURIComponent(key)}&range=all`)}
-                />
+                <g className="cluster-dot-pop" style={{ animationDelay: `${(i % 40) * 22}ms` }}>
+                  <circle r={11} fill={c} opacity={dimmed ? 0.03 : 0.14} style={{ transition: 'fill 400ms, opacity 250ms' }} />
+                  <circle
+                    r={5.5}
+                    fill={c} opacity={dimmed ? 0.15 : 0.92}
+                    stroke="white" strokeWidth="1.25"
+                    style={{ cursor: 'pointer', transition: 'fill 400ms, opacity 250ms' }}
+                    onMouseEnter={() => setHover({ visitorKey: key, excerpt: pt.excerpt, segmentId: pt.segmentId, cx: pt.cx, cy: pt.cy })}
+                    onMouseLeave={() => setHover(null)}
+                    onClick={() => router.push(`${sessionsBasePath}?user=${encodeURIComponent(key)}&range=all`)}
+                  />
+                </g>
               </g>
             );
           })}
