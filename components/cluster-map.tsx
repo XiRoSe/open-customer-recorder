@@ -37,6 +37,8 @@ const DIMENSION_GLOSSARY: Record<string, string> = {
 const W = 760;
 const H = 460;
 const PAD = 40;
+// Muted brass for the instrument lines — the "clean steampunk" accent.
+const BRASS = '#B08D57';
 
 interface HoverInfo { visitorKey: string; excerpt: string; segmentId: string | null; cx: number; cy: number }
 
@@ -57,27 +59,6 @@ export function ClusterMap({ dims, sessionsBasePath }: {
     const m = new Map<string, string>();
     dim?.segments.forEach((s, i) => m.set(s.id, SEGMENT_PALETTE[i % SEGMENT_PALETTE.length]));
     return (segmentId: string | null) => (segmentId && m.get(segmentId)) || '#9ca3af';
-  }, [dim]);
-
-  // Soft color washes under each segment's mass — centroid of its dots,
-  // in plot pixels. They glide with the dots on dimension switch.
-  const auras = useMemo(() => {
-    if (!dim) return [];
-    const bySeg = new Map<string, { sx: number; sy: number; n: number }>();
-    dim.points.forEach((p) => {
-      if (!p.segmentId) return;
-      const cur = bySeg.get(p.segmentId) ?? { sx: 0, sy: 0, n: 0 };
-      cur.sx += PAD + ((p.x + 1) / 2) * (W - PAD * 2);
-      cur.sy += PAD + (1 - (p.y + 1) / 2) * (H - PAD * 2);
-      cur.n += 1;
-      bySeg.set(p.segmentId, cur);
-    });
-    return dim.segments.map((s, i) => {
-      const c = bySeg.get(s.id);
-      return c && c.n > 0
-        ? { id: s.id, cx: c.sx / c.n, cy: c.sy / c.n, color: SEGMENT_PALETTE[i % SEGMENT_PALETTE.length], r: 70 + Math.min(60, c.n * 6) }
-        : null;
-    }).filter((a): a is NonNullable<typeof a> => a !== null);
   }, [dim]);
 
   // Keyed by visitorKey so React reuses the node across dimension
@@ -149,58 +130,50 @@ export function ClusterMap({ dims, sessionsBasePath }: {
         <style>{`
           @keyframes dot-pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
           .cluster-dot-pop { animation: dot-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; transform-box: fill-box; transform-origin: center; }
+          @keyframes radar-sweep {
+            0% { transform: rotate(0deg); opacity: 0.9; }
+            80% { opacity: 0.9; }
+            100% { transform: rotate(360deg); opacity: 0; }
+          }
+          .cluster-sweep { animation: radar-sweep 1.4s cubic-bezier(0.45, 0, 0.2, 1) forwards; }
           @media (prefers-reduced-motion: reduce) {
             .cluster-dot-pop { animation: none; }
             .cluster-dot-move { transition: none !important; }
+            .cluster-sweep { animation: none; opacity: 0; }
           }
         `}</style>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
              aria-label={`Visitors positioned by ${dim.dimension} similarity, colored by segment`}>
-          <defs>
-            {SEGMENT_PALETTE.map((c, i) => (
-              <radialGradient key={i} id={`aura-${i}`}>
-                <stop offset="0%" stopColor={c} stopOpacity="0.16" />
-                <stop offset="60%" stopColor={c} stopOpacity="0.07" />
-                <stop offset="100%" stopColor={c} stopOpacity="0" />
-              </radialGradient>
+          {/* clean white ground, denser and more visible grid */}
+          {[0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875].map((f) => (
+            <g key={f} className="stroke-border" strokeWidth="1" opacity="0.9">
+              <line x1={PAD} x2={W - PAD} y1={PAD + f * (H - PAD * 2)} y2={PAD + f * (H - PAD * 2)} strokeDasharray="3 5" />
+              <line y1={PAD} y2={H - PAD} x1={PAD + f * (W - PAD * 2)} x2={PAD + f * (W - PAD * 2)} strokeDasharray="3 5" />
+            </g>
+          ))}
+
+          {/* instrument face: brass concentric guides + crosshair + edge ticks */}
+          <g stroke={BRASS} fill="none">
+            {[70, 140, 210].map((r) => (
+              <circle key={r} cx={W / 2} cy={H / 2} r={r} strokeWidth="0.75" opacity="0.28" />
             ))}
-          </defs>
+            <circle cx={W / 2} cy={H / 2} r={2.5} fill={BRASS} stroke="none" opacity="0.5" />
+            <line x1={W / 2} x2={W / 2} y1={PAD} y2={H - PAD} strokeWidth="0.75" opacity="0.22" />
+            <line x1={PAD} x2={W - PAD} y1={H / 2} y2={H / 2} strokeWidth="0.75" opacity="0.22" />
+            {Array.from({ length: 17 }, (_, i) => PAD + (i / 16) * (W - PAD * 2)).map((x, i) => (
+              <g key={`t${i}`} strokeWidth="1" opacity={i % 4 === 0 ? 0.55 : 0.3}>
+                <line x1={x} x2={x} y1={H - PAD} y2={H - PAD + (i % 4 === 0 ? 8 : 5)} />
+                <line x1={x} x2={x} y1={PAD} y2={PAD - (i % 4 === 0 ? 8 : 5)} />
+              </g>
+            ))}
+          </g>
 
-          {/* framed plot area with a whisper of fill */}
-          <rect x={PAD - 18} y={PAD - 18} width={W - (PAD - 18) * 2} height={H - (PAD - 18) * 2}
-                rx="14" fill="currentColor" opacity="0.03" />
-          <rect x={PAD - 18} y={PAD - 18} width={W - (PAD - 18) * 2} height={H - (PAD - 18) * 2}
-                rx="14" fill="none" className="stroke-border" strokeWidth="1" />
-
-          {/* two-level grid: fine minor + clearer quarter lines */}
-          {[0.125, 0.375, 0.625, 0.875].map((f) => (
-            <g key={`m${f}`} className="stroke-border" strokeWidth="0.75" opacity="0.35">
-              <line x1={PAD} x2={W - PAD} y1={PAD + f * (H - PAD * 2)} y2={PAD + f * (H - PAD * 2)} strokeDasharray="1 7" />
-              <line y1={PAD} y2={H - PAD} x1={PAD + f * (W - PAD * 2)} x2={PAD + f * (W - PAD * 2)} strokeDasharray="1 7" />
-            </g>
-          ))}
-          {[0.25, 0.5, 0.75].map((f) => (
-            <g key={f} className="stroke-border" strokeWidth="1" opacity="0.8">
-              <line x1={PAD} x2={W - PAD} y1={PAD + f * (H - PAD * 2)} y2={PAD + f * (H - PAD * 2)} strokeDasharray="2 6" />
-              <line y1={PAD} y2={H - PAD} x1={PAD + f * (W - PAD * 2)} x2={PAD + f * (W - PAD * 2)} strokeDasharray="2 6" />
-            </g>
-          ))}
-
-          {/* segment auras — soft nebulae under each cluster's mass */}
-          {auras.map((a) => {
-            const paletteIdx = dim.segments.findIndex((s) => s.id === a.id) % SEGMENT_PALETTE.length;
-            const dimmedAura = focusSegment !== null && a.id !== focusSegment;
-            return (
-              <circle
-                key={a.id}
-                r={a.r}
-                fill={`url(#aura-${paletteIdx})`}
-                opacity={dimmedAura ? 0.15 : 1}
-                style={{ transform: `translate(${a.cx}px, ${a.cy}px)`, transition: 'transform 650ms cubic-bezier(0.22, 1, 0.36, 1), opacity 250ms' }}
-                className="cluster-dot-move"
-              />
-            );
-          })}
+          {/* one-shot radar sweep — replays on every dimension switch */}
+          <g key={`sweep-${dim.dimension}`} className="cluster-sweep" style={{ transformOrigin: `${W / 2}px ${H / 2}px` }}>
+            <line x1={W / 2} y1={H / 2} x2={W / 2 + 215} y2={H / 2} stroke={BRASS} strokeWidth="1.5" opacity="0.7" />
+            <path d={`M ${W / 2} ${H / 2} L ${W / 2 + 215} ${H / 2} A 215 215 0 0 0 ${W / 2 + 215 * Math.cos(-0.5)} ${H / 2 + 215 * Math.sin(-0.5)} Z`}
+                  fill={BRASS} opacity="0.08" stroke="none" />
+          </g>
           {placed.map(({ key, pt }, i) => {
             if (!pt) return null;
             const dimmed = focusSegment !== null && pt.segmentId !== focusSegment;
