@@ -49,6 +49,27 @@ export function ClusterMap({ dims, sessionsBasePath }: {
     return (segmentId: string | null) => (segmentId && m.get(segmentId)) || '#9ca3af';
   }, [dim]);
 
+  // Soft color washes under each segment's mass — centroid of its dots,
+  // in plot pixels. They glide with the dots on dimension switch.
+  const auras = useMemo(() => {
+    if (!dim) return [];
+    const bySeg = new Map<string, { sx: number; sy: number; n: number }>();
+    dim.points.forEach((p) => {
+      if (!p.segmentId) return;
+      const cur = bySeg.get(p.segmentId) ?? { sx: 0, sy: 0, n: 0 };
+      cur.sx += PAD + ((p.x + 1) / 2) * (W - PAD * 2);
+      cur.sy += PAD + (1 - (p.y + 1) / 2) * (H - PAD * 2);
+      cur.n += 1;
+      bySeg.set(p.segmentId, cur);
+    });
+    return dim.segments.map((s, i) => {
+      const c = bySeg.get(s.id);
+      return c && c.n > 0
+        ? { id: s.id, cx: c.sx / c.n, cy: c.sy / c.n, color: SEGMENT_PALETTE[i % SEGMENT_PALETTE.length], r: 70 + Math.min(60, c.n * 6) }
+        : null;
+    }).filter((a): a is NonNullable<typeof a> => a !== null);
+  }, [dim]);
+
   // Keyed by visitorKey so React reuses the node across dimension
   // switches and the CSS transition animates the move. Visitors missing
   // from the selected dimension fade out in place.
@@ -110,12 +131,51 @@ export function ClusterMap({ dims, sessionsBasePath }: {
         `}</style>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
              aria-label={`Visitors positioned by ${dim.dimension} similarity, colored by segment`}>
+          <defs>
+            {SEGMENT_PALETTE.map((c, i) => (
+              <radialGradient key={i} id={`aura-${i}`}>
+                <stop offset="0%" stopColor={c} stopOpacity="0.16" />
+                <stop offset="60%" stopColor={c} stopOpacity="0.07" />
+                <stop offset="100%" stopColor={c} stopOpacity="0" />
+              </radialGradient>
+            ))}
+          </defs>
+
+          {/* framed plot area with a whisper of fill */}
+          <rect x={PAD - 18} y={PAD - 18} width={W - (PAD - 18) * 2} height={H - (PAD - 18) * 2}
+                rx="14" fill="currentColor" opacity="0.03" />
+          <rect x={PAD - 18} y={PAD - 18} width={W - (PAD - 18) * 2} height={H - (PAD - 18) * 2}
+                rx="14" fill="none" className="stroke-border" strokeWidth="1" />
+
+          {/* two-level grid: fine minor + clearer quarter lines */}
+          {[0.125, 0.375, 0.625, 0.875].map((f) => (
+            <g key={`m${f}`} className="stroke-border" strokeWidth="0.75" opacity="0.35">
+              <line x1={PAD} x2={W - PAD} y1={PAD + f * (H - PAD * 2)} y2={PAD + f * (H - PAD * 2)} strokeDasharray="1 7" />
+              <line y1={PAD} y2={H - PAD} x1={PAD + f * (W - PAD * 2)} x2={PAD + f * (W - PAD * 2)} strokeDasharray="1 7" />
+            </g>
+          ))}
           {[0.25, 0.5, 0.75].map((f) => (
-            <g key={f} className="stroke-border" strokeWidth="1" opacity="0.6">
+            <g key={f} className="stroke-border" strokeWidth="1" opacity="0.8">
               <line x1={PAD} x2={W - PAD} y1={PAD + f * (H - PAD * 2)} y2={PAD + f * (H - PAD * 2)} strokeDasharray="2 6" />
               <line y1={PAD} y2={H - PAD} x1={PAD + f * (W - PAD * 2)} x2={PAD + f * (W - PAD * 2)} strokeDasharray="2 6" />
             </g>
           ))}
+
+          {/* segment auras — soft nebulae under each cluster's mass */}
+          {auras.map((a) => {
+            const paletteIdx = dim.segments.findIndex((s) => s.id === a.id) % SEGMENT_PALETTE.length;
+            const dimmedAura = focusSegment !== null && a.id !== focusSegment;
+            return (
+              <circle
+                key={a.id}
+                r={a.r}
+                fill={`url(#aura-${paletteIdx})`}
+                opacity={dimmedAura ? 0.15 : 1}
+                style={{ transform: `translate(${a.cx}px, ${a.cy}px)`, transition: 'transform 650ms cubic-bezier(0.22, 1, 0.36, 1), opacity 250ms' }}
+                className="cluster-dot-move"
+              />
+            );
+          })}
           {placed.map(({ key, pt }, i) => {
             if (!pt) return null;
             const dimmed = focusSegment !== null && pt.segmentId !== focusSegment;
