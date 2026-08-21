@@ -16,6 +16,14 @@ const DIMENSION_LABELS: Record<string, string> = {
   experience: 'Experience',
 };
 
+const DIMENSION_GLOSSARY: Record<string, string> = {
+  overall: 'Everything combined — positioned at the average of the four dimension points.',
+  persona: 'Who the visitor appears to be: role, sophistication, context.',
+  intent: 'What they are trying to achieve across their visits.',
+  source: 'Where they came from and why: referrers, entry pages, campaigns.',
+  experience: 'How it went for them: friction hit, engagement growing or fading.',
+};
+
 const W = 760;
 const H = 460;
 const PAD = 40;
@@ -150,6 +158,28 @@ export function ClusterMap({ dims, sessionsBasePath }: {
             <p className="text-muted-foreground m-0 leading-snug">{hover.excerpt}…</p>
           </div>
         )}
+      </div>
+
+      {/* how to read this map */}
+      <div className="rounded-md border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        <div className="text-[11px] font-medium uppercase tracking-wider mb-1.5">Legend</div>
+        <div className="flex flex-wrap gap-x-5 gap-y-1">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-foreground/70 shrink-0" aria-hidden />
+            one dot = one visitor, colored by segment
+          </span>
+          <span>closer dots = more similar {DIMENSION_LABELS[dim.dimension]?.toLowerCase()} descriptions</span>
+          <span>hover a dot = the sentence behind it · click = that visitor&apos;s sessions</span>
+          <span>hover a segment card = spotlight its visitors</span>
+        </div>
+        <div className="mt-2 pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5">
+          {dims.map((d) => (
+            <span key={d.dimension}>
+              <span className="font-medium text-foreground/80">{DIMENSION_LABELS[d.dimension]}</span>
+              {' — '}{DIMENSION_GLOSSARY[d.dimension]}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* segments of the selected dimension — hover to spotlight */}
