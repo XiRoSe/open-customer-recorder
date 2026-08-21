@@ -197,10 +197,16 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
 export async function timelineForProject(projectId: string, rangeKey: string): Promise<TimelineData> {
   const windowEnd = Date.now();
   if (rangeKey === 'all') {
+    // Sessions carry client-supplied clocks, and one skewed timestamp
+    // (seen: 1978) would otherwise stretch "all time" across decades of
+    // empty buckets — so the earliest session that predates the project
+    // itself can't anchor the window.
     interface MinRow extends Record<string, unknown> { min: string | null }
     const res = await db.execute<MinRow>(sql`
-      SELECT min(started_at) AS min FROM ${schema.sessions}
-      WHERE project_id = ${projectId} AND event_count > 0
+      SELECT min(s.started_at) AS min
+      FROM ${schema.sessions} s
+      WHERE s.project_id = ${projectId} AND s.event_count > 0
+        AND s.started_at >= (SELECT p.created_at FROM ${schema.projects} p WHERE p.id = ${projectId})
     `);
     const rows0: MinRow[] = Array.isArray(res) ? res : (res as unknown as { rows: MinRow[] }).rows ?? [];
     const start = rows0[0]?.min ? new Date(rows0[0].min).getTime() : windowEnd - 86_400_000;

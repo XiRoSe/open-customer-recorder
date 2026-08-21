@@ -26,6 +26,21 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
     expect(t.totals.frustrated).toBe(1);
     expect(t.totals.newVisitors).toBe(1);
   });
+
+  it('all-time window ignores sessions with clocks before the project existed', async () => {
+    const { project } = await createOrgWithProject();
+    await db.insert(schema.sessions).values([
+      { projectId: project.id, anonId: 'skewed-clock', startedAt: new Date('1978-08-09T00:00:00Z'),
+        endedAt: new Date(), eventCount: 1, durationMs: 1_000, blobPath: '', pageUrl: 'https://x.test/' },
+      { projectId: project.id, anonId: 'real', startedAt: new Date(Date.now() - 3600_000),
+        endedAt: new Date(), eventCount: 1, durationMs: 1_000, blobPath: '', pageUrl: 'https://x.test/' },
+    ]);
+    const t = await timelineForProject(project.id, 'all');
+    // A 1978 anchor would mean decades of weekly buckets; the real anchor
+    // is the first session recorded after the project existed.
+    expect(t.buckets.length).toBeLessThan(100);
+    expect(t.totals.sessions).toBe(1);
+  });
 });
 
 const HOUR = 3600_000;
