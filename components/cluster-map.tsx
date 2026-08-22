@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import type { DimensionData, Segment } from '@/lib/user-segments';
 import { Card } from '@/components/ui/card';
 
-export const SEGMENT_PALETTE = [
-  '#10b981', '#0ea5e9', '#8b5cf6', '#f59e0b', '#f43f5e', '#06b6d4', '#84cc16', '#d946ef',
-];
+export { SEGMENT_PALETTE } from '@/lib/segment-palette';
+import { SEGMENT_PALETTE } from '@/lib/segment-palette';
 
 const DIMENSION_LABELS: Record<string, string> = {
   overall: 'Overall',

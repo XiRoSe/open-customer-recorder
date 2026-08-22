@@ -15,5 +15,5 @@ export default async function ProjectsPage() {
     .orderBy(desc(schema.projects.createdAt))
     .limit(1);
   if (!project) redirect('/login');
-  redirect(`/projects/${project.id}/sessions`);
+  redirect(`/projects/${project.id}/overview`);
 }

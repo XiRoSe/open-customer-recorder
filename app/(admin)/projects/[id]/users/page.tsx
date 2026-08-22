@@ -131,6 +131,8 @@ export default async function UsersPage(props: {
           </p>
         </div>
         <div className="flex gap-2 text-sm">
+          <Link href={`/projects/${id}/overview`} className="text-muted-foreground hover:underline">Overview</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href={`${sessionsHrefBase}${activeRange.value === '24h' ? '' : `?range=${activeRange.value}`}`} className="text-muted-foreground hover:underline">Sessions</Link>
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>

@@ -299,6 +299,12 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
 }
 
 export async function timelineForProject(projectId: string, rangeKey: string): Promise<TimelineData> {
+  return (await timelineBundleForProject(projectId, rangeKey)).data;
+}
+
+/** Timeline data plus the fetched rows, for consumers (the Overview)
+ * that derive extra aggregates without a second query. */
+export async function timelineBundleForProject(projectId: string, rangeKey: string): Promise<{ data: TimelineData; rows: TimelineSessionRow[] }> {
   const windowEnd = Date.now();
   if (rangeKey === 'all') {
     // Sessions carry client-supplied clocks, and one skewed timestamp
@@ -318,11 +324,11 @@ export async function timelineForProject(projectId: string, rangeKey: string): P
     const bucketMs = windowMs <= 2 * 86_400_000 ? 3600_000 : windowMs <= 90 * 86_400_000 ? 86_400_000 : 7 * 86_400_000;
     // +bucketMs: bucket alignment can pull the window start earlier.
     const rows = await timelineRowsForProject(projectId, windowEnd, windowMs + bucketMs);
-    return buildTimeline(rows, windowEnd, windowMs, bucketMs, false);
+    return { data: buildTimeline(rows, windowEnd, windowMs, bucketMs, false), rows };
   }
   const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
   const rows = await timelineRowsForProject(projectId, windowEnd, range.windowMs + range.bucketMs);
-  return buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs);
+  return { data: buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs), rows };
 }
 
 export interface TimelinePatterns { peaks: string; quiet: string; opportunity: string; watch: string }

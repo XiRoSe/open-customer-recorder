@@ -78,6 +78,8 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           <p className="text-sm text-muted-foreground">Feature toggles apply within a minute — no redeploy needed.</p>
         </div>
         <div className="flex gap-2 text-sm items-baseline">
+          <Link href={`/projects/${id}/overview`} className="text-muted-foreground hover:underline">Overview</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/sessions`} className="text-muted-foreground hover:underline">Sessions</Link>
           <span className="text-muted-foreground">·</span>
           <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>
