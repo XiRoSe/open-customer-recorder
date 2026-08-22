@@ -96,6 +96,15 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
   const metricKeys = (Object.keys(TIMELINE_METRICS) as TimelineMetric[])
     .filter((m) => m !== 'tags' || tagOrder.length > 0);
 
+  // Window total per measure, shown in each chip's hover text.
+  const metricTotal = (m: TimelineMetric): number => buckets.reduce((acc, b) => acc + (
+    m === 'sessions' ? b.total
+    : m === 'clicks' ? Object.values(b.clicksBySource).reduce((a, v) => a + v, 0)
+    : m === 'engaged' ? Object.values(b.engagedBySource).reduce((a, v) => a + v, 0)
+    : m === 'frustration' ? Object.values(b.frustratedBySource).reduce((a, v) => a + v, 0)
+    : Object.values(b.byTag).reduce((a, v) => a + v, 0)
+  ), 0);
+
   return (
     <div className="space-y-4">
       <style>{`
@@ -113,7 +122,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
             <button
               key={m}
               type="button"
-              title={TIMELINE_METRICS[m].hint}
+              title={`${metricTotal(m).toLocaleString()} in this window. ${TIMELINE_METRICS[m].hint}`}
               onClick={() => { setMetric(m); setHover(null); }}
               className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
                 m === metric ? 'bg-foreground text-background border-foreground' : 'text-muted-foreground hover:bg-muted'
