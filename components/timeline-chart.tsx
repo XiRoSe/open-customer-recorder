@@ -130,7 +130,14 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
       {hover && (
         <div
           className="pointer-events-none absolute z-10 rounded-md border bg-card p-2.5 shadow-md text-xs min-w-40"
-          style={{ left: `${(hover.x / W) * 100}%`, top: `${(hover.y / H) * 100}%`, transform: 'translate(-50%, calc(-100% - 10px))' }}
+          style={{
+            left: `${(hover.x / W) * 100}%`,
+            top: `${(hover.y / H) * 100}%`,
+            // Keep the tooltip inside the card: flip below the bar top
+            // when it's near the chart's upper edge, and pin toward the
+            // opposite side near the left/right edges.
+            transform: `translate(${hover.x / W < 0.12 ? '-10%' : hover.x / W > 0.88 ? '-90%' : '-50%'}, ${hover.y / H < 0.4 ? '14px' : 'calc(-100% - 10px)'})`,
+          }}
         >
           <div className="font-medium mb-1">
             {fmtBucket(hover.bucket.start)} · {hover.bucket.total} {hover.bucket.total === 1 ? 'session' : 'sessions'}
