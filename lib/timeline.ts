@@ -64,10 +64,17 @@ export interface TimelineBucket {
   start: number;
   bySource: Record<SourceCategory, number>;
   total: number;
-  clicksBySource: Record<SourceCategory, number>;
-  engagedBySource: Record<SourceCategory, number>;
-  frustratedBySource: Record<SourceCategory, number>;
+  /** Clicks stacked by device class. */
+  clicksByDevice: Record<string, number>;
+  /** Engaged (30s+) sessions split new vs returning visitors. */
+  engagedByVisitor: Record<'new' | 'returning', number>;
+  /** Frustration signals stacked by kind (a session can carry several). */
+  frictionByKind: Record<string, number>;
+  /** Sessions with at least one frustration signal. */
+  frustrated: number;
   byTag: Record<string, number>;
+  /** Sessions carrying at least one tag. */
+  tagged: number;
   spike?: { factor: number; dominant: SourceCategory };
 }
 
@@ -162,22 +169,30 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
     start: windowStart + i * bucketMs,
     bySource: emptySources(),
     total: 0,
-    clicksBySource: emptySources(),
-    engagedBySource: emptySources(),
-    frustratedBySource: emptySources(),
+    clicksByDevice: {},
+    engagedByVisitor: { new: 0, returning: 0 },
+    frictionByKind: {},
+    frustrated: 0,
     byTag: {},
+    tagged: 0,
   }));
   const tagMeta: Record<string, { color: string }> = {};
   for (const r of rows) {
     const t = r.startedAt.getTime();
     if (t < windowStart || t >= windowEnd) continue;
     const b = buckets[Math.min(bucketCount - 1, Math.floor((t - windowStart) / bucketMs))];
-    const src = categorizeSource(r.referrer, r.pageUrl);
-    b.bySource[src]++;
+    b.bySource[categorizeSource(r.referrer, r.pageUrl)]++;
     b.total++;
-    b.clicksBySource[src] += r.clicks ?? 0;
-    if ((r.durationMs ?? 0) >= ENGAGED_MS) b.engagedBySource[src]++;
-    if (r.frustrated) b.frustratedBySource[src]++;
+    if (r.clicks) {
+      const dev = deviceOf(r.userAgent);
+      b.clicksByDevice[dev] = (b.clicksByDevice[dev] ?? 0) + r.clicks;
+    }
+    if ((r.durationMs ?? 0) >= ENGAGED_MS) {
+      b.engagedByVisitor[r.firstSeenAt.getTime() >= windowStart ? 'new' : 'returning']++;
+    }
+    if (r.frustrated) b.frustrated++;
+    for (const k of r.insightKinds ?? []) b.frictionByKind[k] = (b.frictionByKind[k] ?? 0) + 1;
+    if ((r.tags ?? []).length > 0) b.tagged++;
     for (const tag of r.tags ?? []) {
       b.byTag[tag.name] = (b.byTag[tag.name] ?? 0) + 1;
       tagMeta[tag.name] ??= { color: tag.color };

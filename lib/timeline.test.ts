@@ -48,9 +48,10 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
 
     const t = await timelineForProject(project.id, '24h');
     const withData = t.buckets.find((b) => b.total > 0)!;
-    expect(withData.clicksBySource.direct).toBe(2);
-    expect(withData.engagedBySource.direct).toBe(1);
+    expect(withData.clicksByDevice.desktop).toBe(2);   // null UA → desktop
+    expect(withData.engagedByVisitor.new).toBe(1);      // first-ever session → new
     expect(withData.byTag).toEqual({ Checkout: 1 });
+    expect(withData.tagged).toBe(1);
     expect(t.tagMeta).toEqual({ Checkout: { color: 'purple' } });
   });
 
@@ -219,19 +220,25 @@ describe('origin & device breakdowns', () => {
 });
 
 describe('metric stacks', () => {
-  it('aggregates clicks, engagement, frustration by source and sessions by tag', () => {
+  it('stacks each measure by its own lens: device, visitor type, signal kind, tag', () => {
+    const old = new Date(END - 40 * HOUR);
     const rows = [
-      row(2, { referrer: 'https://www.google.com/', clicks: 5, durationMs: 60_000, tags: [{ name: 'Checkout', color: 'purple' }] }),
-      row(3, { clicks: 2, frustrated: true, tags: [{ name: 'Checkout', color: 'purple' }, { name: 'Pricing', color: 'blue' }] }),
+      row(2, { clicks: 5, durationMs: 60_000, userAgent: 'Mozilla/5.0 (iPhone) Mobile',
+               tags: [{ name: 'Checkout', color: 'purple' }] }),
+      row(3, { clicks: 2, durationMs: 45_000, visitorKey: 'ret', firstSeenAt: old,
+               frustrated: true, insightKinds: ['dead_click', 'dead_click', 'rage_click'],
+               tags: [{ name: 'Checkout', color: 'purple' }, { name: 'Pricing', color: 'blue' }] }),
       row(4, { clicks: 0 }),
     ];
     const t = buildTimeline(rows, END, WINDOW, HOUR);
     const sum = (pick: (b: (typeof t.buckets)[number]) => Record<string, number>) =>
       t.buckets.reduce((acc, b) => { for (const [k, v] of Object.entries(pick(b))) acc[k] = (acc[k] ?? 0) + v; return acc; }, {} as Record<string, number>);
-    expect(sum((b) => b.clicksBySource)).toMatchObject({ search: 5, direct: 2 });
-    expect(sum((b) => b.engagedBySource)).toMatchObject({ search: 1, direct: 0 });
-    expect(sum((b) => b.frustratedBySource)).toMatchObject({ direct: 1 });
+    expect(sum((b) => b.clicksByDevice)).toEqual({ mobile: 5, desktop: 2 });
+    expect(sum((b) => b.engagedByVisitor)).toEqual({ new: 1, returning: 1 });
+    expect(sum((b) => b.frictionByKind)).toEqual({ dead_click: 2, rage_click: 1 });
+    expect(t.buckets.reduce((a, b) => a + b.frustrated, 0)).toBe(1);
     expect(sum((b) => b.byTag)).toEqual({ Checkout: 2, Pricing: 1 });
+    expect(t.buckets.reduce((a, b) => a + b.tagged, 0)).toBe(2);
     expect(t.tagMeta).toEqual({ Checkout: { color: 'purple' }, Pricing: { color: 'blue' } });
   });
 });

@@ -21,6 +21,25 @@ interface StackSeg { key: string; label: string; color: string; v: number }
 
 const tagHex = (color: string) => (isValidTagColor(color) ? TAG_COLOR_HEX[color] : TAG_COLOR_HEX.gray);
 
+// Fixed stack orders (key, label, color) — grayscale zinc ramps.
+const DEVICE_ORDER: [string, string, string][] = [
+  ['desktop', 'Desktop', '#18181b'],
+  ['mobile', 'Mobile', '#71717a'],
+  ['tablet', 'Tablet', '#a1a1aa'],
+];
+const VISITOR_ORDER: [string, string, string][] = [
+  ['new', 'New visitors', '#18181b'],
+  ['returning', 'Returning', '#a1a1aa'],
+];
+const FRICTION_ORDER: [string, string, string][] = [
+  ['dead_click', 'Dead clicks', '#18181b'],
+  ['rage_click', 'Rage clicks', '#3f3f46'],
+  ['form_abandon', 'Forms abandoned', '#52525b'],
+  ['refresh_loop', 'Refresh loops', '#71717a'],
+  ['uturn', 'U-turns', '#a1a1aa'],
+  ['pogo_stick', 'Pogo-sticking', '#d4d4d8'],
+];
+
 /** Stacked volume per time slot with a switchable measure: sessions,
  * clicks, engaged, frustration (each stacked by traffic source) or
  * tagged sessions (stacked by tag). Owns the control row (range pills
@@ -49,15 +68,21 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
     return [...sums.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   }, [buckets]);
 
+  // Each measure stacks by its most informative lens; every non-tag
+  // stack keeps the grayscale ramp, in a fixed order.
   const stacksOf = (b: TimelineBucket): StackSeg[] => {
-    if (metric === 'tags') {
-      return tagOrder.map((name) => ({ key: name, label: name, color: tagHex(tagMeta[name]?.color ?? 'gray'), v: b.byTag[name] ?? 0 }));
+    switch (metric) {
+      case 'tags':
+        return tagOrder.map((name) => ({ key: name, label: name, color: tagHex(tagMeta[name]?.color ?? 'gray'), v: b.byTag[name] ?? 0 }));
+      case 'clicks':
+        return DEVICE_ORDER.map(([key, label, color]) => ({ key, label, color, v: b.clicksByDevice[key] ?? 0 }));
+      case 'engaged':
+        return VISITOR_ORDER.map(([key, label, color]) => ({ key, label, color, v: b.engagedByVisitor[key as 'new' | 'returning'] ?? 0 }));
+      case 'frustration':
+        return FRICTION_ORDER.map(([key, label, color]) => ({ key, label, color, v: b.frictionByKind[key] ?? 0 }));
+      default:
+        return SOURCE_CATEGORIES.map((s) => ({ key: s, label: SOURCE_META[s].label, color: SOURCE_META[s].color, v: b.bySource[s] }));
     }
-    const rec = metric === 'clicks' ? b.clicksBySource
-      : metric === 'engaged' ? b.engagedBySource
-      : metric === 'frustration' ? b.frustratedBySource
-      : b.bySource;
-    return SOURCE_CATEGORIES.map((s) => ({ key: s, label: SOURCE_META[s].label, color: SOURCE_META[s].color, v: rec[s] }));
   };
 
   const totalOf = (b: TimelineBucket) => stacksOf(b).reduce((a, s) => a + s.v, 0);
@@ -97,14 +122,19 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
   const metricKeys = (Object.keys(TIMELINE_METRICS) as TimelineMetric[])
     .filter((m) => m !== 'tags' || tagOrder.length > 0);
 
-  // Window total per measure, shown in each chip's hover text.
-  const metricTotal = (m: TimelineMetric): number => buckets.reduce((acc, b) => acc + (
-    m === 'sessions' ? b.total
-    : m === 'clicks' ? Object.values(b.clicksBySource).reduce((a, v) => a + v, 0)
-    : m === 'engaged' ? Object.values(b.engagedBySource).reduce((a, v) => a + v, 0)
-    : m === 'frustration' ? Object.values(b.frustratedBySource).reduce((a, v) => a + v, 0)
-    : Object.values(b.byTag).reduce((a, v) => a + v, 0)
-  ), 0);
+  // Contextual window totals for each chip's hover text — always
+  // anchored against the session base ("engaged out of how many?").
+  const sum = (pick: (b: TimelineBucket) => number) => buckets.reduce((a, b) => a + pick(b), 0);
+  const chipTitle = (m: TimelineMetric): string => {
+    const S = sum((b) => b.total);
+    const shr = (n: number) => (S > 0 ? ` (${Math.round((100 * n) / S)}%)` : '');
+    const head = m === 'sessions' ? `${S.toLocaleString()} sessions in this window.`
+      : m === 'clicks' ? `${sum((b) => Object.values(b.clicksByDevice).reduce((a, v) => a + v, 0)).toLocaleString()} clicks across ${S.toLocaleString()} sessions.`
+      : m === 'engaged' ? `${sum((b) => b.engagedByVisitor.new + b.engagedByVisitor.returning).toLocaleString()} of ${S.toLocaleString()} sessions${shr(sum((b) => b.engagedByVisitor.new + b.engagedByVisitor.returning))}.`
+      : m === 'frustration' ? `${sum((b) => Object.values(b.frictionByKind).reduce((a, v) => a + v, 0)).toLocaleString()} signals in ${sum((b) => b.frustrated).toLocaleString()} of ${S.toLocaleString()} sessions${shr(sum((b) => b.frustrated))}.`
+      : `${sum((b) => b.tagged).toLocaleString()} of ${S.toLocaleString()} sessions tagged${shr(sum((b) => b.tagged))}.`;
+    return `${head} ${TIMELINE_METRICS[m].hint}`;
+  };
 
   return (
     <div className="space-y-4">
@@ -123,7 +153,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
             <button
               key={m}
               type="button"
-              title={`${metricTotal(m).toLocaleString()} in this window. ${TIMELINE_METRICS[m].hint}`}
+              title={chipTitle(m)}
               onClick={() => { setMetric(m); setHover(null); }}
               className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
                 m === metric ? 'bg-foreground text-background border-foreground' : 'text-muted-foreground hover:bg-muted'
@@ -221,7 +251,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
           }}
         >
           <div className="font-medium mb-1">
-            {fmtBucket(hover.bucket.start)} · {totalOf(hover.bucket)} {TIMELINE_METRICS[metric].label.toLowerCase()}
+            {fmtBucket(hover.bucket.start)} · {totalOf(hover.bucket)} {TIMELINE_METRICS[metric].noun}
             {metric === 'sessions' && hover.bucket.spike && <span className="ml-1 text-muted-foreground">({hover.bucket.spike.factor}× normal)</span>}
           </div>
           {stacksOf(hover.bucket).filter((s) => s.v > 0).map((s) => (
