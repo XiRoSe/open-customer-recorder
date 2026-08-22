@@ -251,7 +251,10 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
           }}
         >
           <div className="font-medium mb-1">
-            {fmtBucket(hover.bucket.start)} · {totalOf(hover.bucket)} {TIMELINE_METRICS[metric].noun}
+            {fmtBucket(hover.bucket.start)} ·{' '}
+            {metric === 'sessions' ? `${hover.bucket.total} ${hover.bucket.total === 1 ? 'session' : 'sessions'}`
+              : metric === 'engaged' ? `${totalOf(hover.bucket)} of ${hover.bucket.total} sessions engaged 30s+`
+              : `${totalOf(hover.bucket)} ${TIMELINE_METRICS[metric].noun} in ${hover.bucket.total} sessions`}
             {metric === 'sessions' && hover.bucket.spike && <span className="ml-1 text-muted-foreground">({hover.bucket.spike.factor}× normal)</span>}
           </div>
           {stacksOf(hover.bucket).filter((s) => s.v > 0).map((s) => (

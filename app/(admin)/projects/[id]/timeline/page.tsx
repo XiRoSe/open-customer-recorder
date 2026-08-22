@@ -135,9 +135,27 @@ export default async function TimelinePage(props: {
         </>
       )}
 
-      {/* measurement breakdowns — one titled section per lens */}
+      {/* measurement breakdowns — one titled section per lens; friction
+          leads, right under the chart. */}
       {data.totals.sessions > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {Object.keys(data.totals.insightCounts).length > 0 && (
+            <Card className="p-4 lg:col-span-2">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                   title="Frustration signals detected automatically in this window's sessions.">Friction signals</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {Object.entries(data.totals.insightCounts)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([kind, n]) => (
+                    <div key={kind}>
+                      <div className="text-xl font-semibold tabular-nums">{n}</div>
+                      <div className="text-xs text-muted-foreground">{INSIGHT_LABELS[kind] ?? kind}</div>
+                    </div>
+                  ))}
+              </div>
+            </Card>
+          )}
+
           <Card className="p-4">
             <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
                  title="Where sessions came from, derived from each session's referrer and entry URL.">Traffic sources</div>
@@ -227,22 +245,6 @@ export default async function TimelinePage(props: {
             </Card>
           )}
 
-          {Object.keys(data.totals.insightCounts).length > 0 && (
-            <Card className="p-4 lg:col-span-2">
-              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
-                   title="Frustration signals detected automatically in this window's sessions.">Friction signals</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                {Object.entries(data.totals.insightCounts)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([kind, n]) => (
-                    <div key={kind}>
-                      <div className="text-xl font-semibold tabular-nums">{n}</div>
-                      <div className="text-xs text-muted-foreground">{INSIGHT_LABELS[kind] ?? kind}</div>
-                    </div>
-                  ))}
-              </div>
-            </Card>
-          )}
         </div>
       )}
 
