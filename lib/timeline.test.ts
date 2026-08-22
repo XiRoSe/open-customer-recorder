@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildTimeline, buildPatternInput, parsePatterns, timelineForProject, type TimelineSessionRow } from './timeline';
+import { buildTimeline, buildPatternInput, parsePatterns, deviceOf, timelineForProject, type TimelineSessionRow } from './timeline';
 import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
@@ -186,6 +186,35 @@ describe('buildTimeline', () => {
     const t = buildTimeline(rows, END, WINDOW, HOUR);
     expect(t.totals.avgDurationMs).toBe(20_000);
     expect(t.totals.insightCounts).toEqual({ dead_click: 2, rage_click: 1 });
+  });
+});
+
+describe('deviceOf', () => {
+  it('classifies user agents into coarse device classes', () => {
+    expect(deviceOf('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe('mobile');
+    expect(deviceOf('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari')).toBe('mobile');
+    expect(deviceOf('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)')).toBe('tablet');
+    expect(deviceOf('Mozilla/5.0 (Linux; Android 14; SM-X910) Safari')).toBe('tablet');
+    expect(deviceOf('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126')).toBe('desktop');
+    expect(deviceOf(null)).toBe('desktop');
+  });
+});
+
+describe('origin & device breakdowns', () => {
+  it('totals devices, browsers, countries, referrer hosts, and entry paths', () => {
+    const rows = [
+      row(2, { referrer: 'https://www.producthunt.com/posts/x', pageUrl: 'https://x.test/pricing',
+               browser: 'Chrome', country: 'US', userAgent: 'Mozilla/5.0 (iPhone) Mobile' }),
+      row(3, { pageUrl: 'https://x.test/pricing', browser: 'Firefox', country: 'IL',
+               userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }),
+      row(4, { pageUrl: 'https://x.test/', browser: 'Chrome' }),
+    ];
+    const t = buildTimeline(rows, END, WINDOW, HOUR);
+    expect(t.totals.byDevice).toEqual({ mobile: 1, desktop: 2 });
+    expect(t.totals.byBrowser).toEqual({ Chrome: 2, Firefox: 1 });
+    expect(t.totals.byCountry).toEqual({ US: 1, IL: 1 });
+    expect(t.totals.byReferrerHost).toEqual({ 'producthunt.com': 1 });
+    expect(t.totals.byEntryPath).toEqual({ '/pricing': 2, '/': 1 });
   });
 });
 

@@ -166,6 +166,43 @@ export default async function TimelinePage(props: {
             </div>
           </Card>
 
+          <Card className="p-4">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                 title="What visitors browsed with, derived from each session's user agent.">Devices &amp; browsers</div>
+            <BreakdownRows items={Object.entries(data.totals.byDevice)} total={data.totals.sessions}
+                           labels={{ desktop: 'Desktop', mobile: 'Mobile', tablet: 'Tablet' }} />
+            {Object.keys(data.totals.byBrowser).length > 0 && (
+              <>
+                <div className="text-xs text-muted-foreground mt-4 mb-2" title="Top browsers by session count.">Browsers</div>
+                <BreakdownRows items={Object.entries(data.totals.byBrowser)} total={data.totals.sessions} limit={4} />
+              </>
+            )}
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                 title="Referring sites and visitor countries in this window.">Origins</div>
+            {Object.keys(data.totals.byReferrerHost).length > 0 ? (
+              <BreakdownRows items={Object.entries(data.totals.byReferrerHost)} total={data.totals.sessions} limit={5} />
+            ) : (
+              <p className="text-sm text-muted-foreground m-0">No external referrers in this window — every session arrived directly.</p>
+            )}
+            {Object.keys(data.totals.byCountry).length > 0 && (
+              <>
+                <div className="text-xs text-muted-foreground mt-4 mb-2" title="Visitor countries by session count.">Countries</div>
+                <BreakdownRows items={Object.entries(data.totals.byCountry)} total={data.totals.sessions} limit={5} />
+              </>
+            )}
+          </Card>
+
+          {Object.keys(data.totals.byEntryPath).length > 0 && (
+            <Card className="p-4 lg:col-span-2">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                   title="Where sessions began — the first page of each session.">Top entry pages</div>
+              <BreakdownRows items={Object.entries(data.totals.byEntryPath)} total={data.totals.sessions} limit={6} mono />
+            </Card>
+          )}
+
           {Object.keys(data.totals.insightCounts).length > 0 && (
             <Card className="p-4 lg:col-span-2">
               <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
@@ -209,6 +246,37 @@ export default async function TimelinePage(props: {
         </Card>
       )}
     </main>
+  );
+}
+
+/** Count rows with a quiet share bar — the same visual language as the
+ * Traffic sources card, in a neutral ink. */
+function BreakdownRows({ items, total, limit, labels, mono }: {
+  items: [string, number][];
+  total: number;
+  limit?: number;
+  labels?: Record<string, string>;
+  mono?: boolean;
+}) {
+  const top = [...items].sort((a, b) => b[1] - a[1]).slice(0, limit ?? items.length);
+  const shown = top.reduce((a, [, n]) => a + n, 0);
+  const rest = items.reduce((a, [, n]) => a + n, 0) - shown;
+  return (
+    <div className="space-y-2.5">
+      {top.map(([key, n]) => {
+        const share = Math.round((100 * n) / Math.max(1, total));
+        return (
+          <div key={key} className="flex items-center gap-3 text-sm">
+            <span className={`w-40 truncate ${mono ? 'font-mono text-xs' : ''}`} title={labels?.[key] ?? key}>{labels?.[key] ?? key}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-foreground/60" style={{ width: `${share}%` }} />
+            </div>
+            <span className="tabular-nums text-muted-foreground w-20 text-right">{n} · {share}%</span>
+          </div>
+        );
+      })}
+      {rest > 0 && <div className="text-xs text-muted-foreground">+ {rest} in smaller groups</div>}
+    </div>
   );
 }
 

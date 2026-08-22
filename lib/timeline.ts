@@ -32,7 +32,31 @@ export interface TimelineSessionRow {
   insightKinds?: string[];
   clicks?: number;
   tags?: { name: string; color: string }[];
+  country?: string | null;
+  browser?: string | null;
+  userAgent?: string | null;
 }
+
+/** Coarse device class from the user agent. */
+export function deviceOf(userAgent: string | null | undefined): 'mobile' | 'tablet' | 'desktop' {
+  if (!userAgent) return 'desktop';
+  if (/iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent)) return 'tablet';
+  if (/Mobi|iPhone|Android/i.test(userAgent)) return 'mobile';
+  return 'desktop';
+}
+
+const hostOfUrl = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  try { return new URL(url).host.toLowerCase().replace(/^www\./, '') || null; } catch { return null; }
+};
+
+const pathOfUrl = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  try {
+    const p = new URL(url).pathname || '/';
+    return p.length > 48 ? `${p.slice(0, 47)}…` : p;
+  } catch { return null; }
+};
 
 export { TIMELINE_METRICS, type TimelineMetric } from './timeline-metrics';
 
@@ -58,6 +82,11 @@ export interface TimelineTotals {
   avgDurationMs: number;
   insightCounts: Record<string, number>;
   bySource: Record<SourceCategory, number>;
+  byDevice: Record<string, number>;
+  byBrowser: Record<string, number>;
+  byCountry: Record<string, number>;
+  byReferrerHost: Record<string, number>;
+  byEntryPath: Record<string, number>;
 }
 
 export interface TimelineData {
@@ -79,6 +108,14 @@ function windowStats(rows: TimelineSessionRow[], start: number, end: number): Ti
   const inWindow = rows.filter((r) => r.startedAt.getTime() >= start && r.startedAt.getTime() < end);
   const bySource = emptySources();
   const insightCounts: Record<string, number> = {};
+  const byDevice: Record<string, number> = {};
+  const byBrowser: Record<string, number> = {};
+  const byCountry: Record<string, number> = {};
+  const byReferrerHost: Record<string, number> = {};
+  const byEntryPath: Record<string, number> = {};
+  const bump = (rec: Record<string, number>, key: string | null | undefined) => {
+    if (key) rec[key] = (rec[key] ?? 0) + 1;
+  };
   let engaged = 0, frustrated = 0, newSessions = 0, durSum = 0;
   const newVisitors = new Set<string>();
   for (const r of inWindow) {
@@ -88,12 +125,18 @@ function windowStats(rows: TimelineSessionRow[], start: number, end: number): Ti
     durSum += r.durationMs ?? 0;
     if (r.firstSeenAt.getTime() >= start) { newVisitors.add(r.visitorKey); newSessions++; }
     for (const k of r.insightKinds ?? []) insightCounts[k] = (insightCounts[k] ?? 0) + 1;
+    bump(byDevice, deviceOf(r.userAgent));
+    bump(byBrowser, r.browser);
+    bump(byCountry, r.country);
+    bump(byReferrerHost, hostOfUrl(r.referrer));
+    bump(byEntryPath, pathOfUrl(r.pageUrl));
   }
   return {
     sessions: inWindow.length, engaged, frustrated,
     newVisitors: newVisitors.size, newSessions,
     avgDurationMs: inWindow.length > 0 ? durSum / inWindow.length : 0,
     insightCounts, bySource,
+    byDevice, byBrowser, byCountry, byReferrerHost, byEntryPath,
   };
 }
 
@@ -194,9 +237,11 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
     started_at: string; duration_ms: number | null; referrer: string | null; page_url: string | null;
     visitor_key: string; first_seen_at: string; frustrated: boolean; insights: { kind?: string }[] | null;
     clicks: number; tags: { name: string; color: string }[] | null;
+    country: string | null; browser: string | null; user_agent: string | null;
   }
   const res = await db.execute<Row>(sql`
     SELECT s.started_at, s.duration_ms, s.referrer, s.page_url,
+           s.country, s.browser, s.user_agent,
            coalesce(s.user_id, s.anon_id) AS visitor_key,
            first_seen.at AS first_seen_at,
            EXISTS (
@@ -232,6 +277,9 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
     insightKinds: (r.insights ?? []).map((i) => i.kind).filter((k): k is string => Boolean(k)),
     clicks: r.clicks,
     tags: r.tags ?? [],
+    country: r.country,
+    browser: r.browser,
+    userAgent: r.user_agent,
   }));
 }
 
