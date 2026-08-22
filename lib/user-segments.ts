@@ -405,6 +405,33 @@ export async function clustersDataForProject(projectId: string): Promise<Dimensi
   return out;
 }
 
+/** Distinct visitor keys with a recorded session since `since`. */
+export async function activeVisitorKeys(projectId: string, since: Date): Promise<Set<string>> {
+  const res = await db.execute<{ k: string }>(sql`
+    SELECT DISTINCT coalesce(user_id, anon_id) AS k FROM ${schema.sessions}
+    WHERE project_id = ${projectId} AND event_count > 0
+      AND started_at >= ${since.toISOString()}::timestamptz
+  `);
+  const rows = Array.isArray(res) ? res : (res as unknown as { rows: { k: string }[] }).rows ?? [];
+  return new Set(rows.map((r) => r.k));
+}
+
+/** Pure: keep only the given visitors on every dimension. Segment sizes
+ * are recounted from the visible points so the cards match the map, and
+ * segments (or dimensions) left empty are dropped. Clustering itself
+ * stays global — this is a view filter, not a recluster. */
+export function filterDimsByVisitors(dims: DimensionData[], keys: Set<string>): DimensionData[] {
+  return dims.map((d) => {
+    const points = d.points.filter((p) => keys.has(p.visitorKey));
+    const counts = new Map<string, number>();
+    for (const p of points) if (p.segmentId) counts.set(p.segmentId, (counts.get(p.segmentId) ?? 0) + 1);
+    const segments = d.segments
+      .map((s) => ({ ...s, size: counts.get(s.id) ?? 0 }))
+      .filter((s) => s.size > 0);
+    return { ...d, points, segments };
+  }).filter((d) => d.points.length > 0);
+}
+
 /** Positioned profiles for the (overall) cluster map — kept for tests
  * and simple consumers. */
 export async function clusterMapForProject(projectId: string): Promise<ClusterPoint[]> {

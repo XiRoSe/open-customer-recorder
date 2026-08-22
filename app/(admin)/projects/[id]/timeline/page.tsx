@@ -113,7 +113,7 @@ export default async function TimelinePage(props: {
 
       {data.totals.sessions > 0 ? (
         <Card className="p-4">
-          <TimelineChart buckets={data.buckets} bucketMs={data.bucketMs} sessionsBasePath={`/projects/${id}/sessions`} />
+          <TimelineChart buckets={data.buckets} bucketMs={data.bucketMs} tagMeta={data.tagMeta} sessionsBasePath={`/projects/${id}/sessions`} />
         </Card>
       ) : (
         <Card className="p-8 text-center text-sm text-muted-foreground">

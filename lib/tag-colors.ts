@@ -21,3 +21,14 @@ export const TAG_COLOR_DOT_CLASS: Record<TagColor, string> = {
   red: 'bg-red-500',
   gray: 'bg-gray-500',
 };
+
+/** SVG-fill hexes (the -500 steps behind the dot classes) for charts
+ * that stack by tag — a tag's color is user-chosen identity. */
+export const TAG_COLOR_HEX: Record<TagColor, string> = {
+  green: '#22c55e',
+  blue: '#3b82f6',
+  purple: '#a855f7',
+  amber: '#f59e0b',
+  red: '#ef4444',
+  gray: '#6b7280',
+};

@@ -30,12 +30,20 @@ export interface TimelineSessionRow {
   firstSeenAt: Date;
   frustrated: boolean;
   insightKinds?: string[];
+  clicks?: number;
+  tags?: { name: string; color: string }[];
 }
+
+export { TIMELINE_METRICS, type TimelineMetric } from './timeline-metrics';
 
 export interface TimelineBucket {
   start: number;
   bySource: Record<SourceCategory, number>;
   total: number;
+  clicksBySource: Record<SourceCategory, number>;
+  engagedBySource: Record<SourceCategory, number>;
+  frustratedBySource: Record<SourceCategory, number>;
+  byTag: Record<string, number>;
   spike?: { factor: number; dominant: SourceCategory };
 }
 
@@ -59,6 +67,8 @@ export interface TimelineData {
   windowStart: number;
   windowEnd: number;
   bucketMs: number;
+  /** Tag name → chart color for the by-tag stack, from the tag rules. */
+  tagMeta: Record<string, { color: string }>;
 }
 
 function emptySources(): Record<SourceCategory, number> {
@@ -109,13 +119,26 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
     start: windowStart + i * bucketMs,
     bySource: emptySources(),
     total: 0,
+    clicksBySource: emptySources(),
+    engagedBySource: emptySources(),
+    frustratedBySource: emptySources(),
+    byTag: {},
   }));
+  const tagMeta: Record<string, { color: string }> = {};
   for (const r of rows) {
     const t = r.startedAt.getTime();
     if (t < windowStart || t >= windowEnd) continue;
     const b = buckets[Math.min(bucketCount - 1, Math.floor((t - windowStart) / bucketMs))];
-    b.bySource[categorizeSource(r.referrer, r.pageUrl)]++;
+    const src = categorizeSource(r.referrer, r.pageUrl);
+    b.bySource[src]++;
     b.total++;
+    b.clicksBySource[src] += r.clicks ?? 0;
+    if ((r.durationMs ?? 0) >= ENGAGED_MS) b.engagedBySource[src]++;
+    if (r.frustrated) b.frustratedBySource[src]++;
+    for (const tag of r.tags ?? []) {
+      b.byTag[tag.name] = (b.byTag[tag.name] ?? 0) + 1;
+      tagMeta[tag.name] ??= { color: tag.color };
+    }
   }
 
   // Spikes: buckets deviating hard from the window's own rhythm.
@@ -160,7 +183,7 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
     }
   }
 
-  return { buckets, totals: cur, trends, windowStart, windowEnd, bucketMs };
+  return { buckets, totals: cur, trends, windowStart, windowEnd, bucketMs, tagMeta };
 }
 
 /** Fetch rows covering current + previous window in one query. */
@@ -170,6 +193,7 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
   interface Row extends Record<string, unknown> {
     started_at: string; duration_ms: number | null; referrer: string | null; page_url: string | null;
     visitor_key: string; first_seen_at: string; frustrated: boolean; insights: { kind?: string }[] | null;
+    clicks: number; tags: { name: string; color: string }[] | null;
   }
   const res = await db.execute<Row>(sql`
     SELECT s.started_at, s.duration_ms, s.referrer, s.page_url,
@@ -179,7 +203,16 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
              SELECT 1 FROM ${schema.sessionSummaries} ss
              WHERE ss.session_id = s.id AND jsonb_array_length(ss.insights) > 0
            ) AS frustrated,
-           (SELECT ss2.insights FROM ${schema.sessionSummaries} ss2 WHERE ss2.session_id = s.id LIMIT 1) AS insights
+           (SELECT ss2.insights FROM ${schema.sessionSummaries} ss2 WHERE ss2.session_id = s.id LIMIT 1) AS insights,
+           coalesce((
+             SELECT count(*)::int FROM ${schema.sessionSummaries} ss3,
+                    jsonb_array_elements(ss3.digest->'steps') step
+             WHERE ss3.session_id = s.id AND step->>'kind' = 'click'
+           ), 0) AS clicks,
+           (SELECT jsonb_agg(jsonb_build_object('name', tr.name, 'color', tr.color))
+            FROM ${schema.sessionTags} st
+            JOIN ${schema.tagRules} tr ON tr.id = st.tag_rule_id
+            WHERE st.session_id = s.id) AS tags
     FROM ${schema.sessions} s
     JOIN LATERAL (
       SELECT min(s2.started_at) AS at FROM ${schema.sessions} s2
@@ -197,6 +230,8 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
     firstSeenAt: new Date(r.first_seen_at),
     frustrated: r.frustrated,
     insightKinds: (r.insights ?? []).map((i) => i.kind).filter((k): k is string => Boolean(k)),
+    clicks: r.clicks,
+    tags: r.tags ?? [],
   }));
 }
 

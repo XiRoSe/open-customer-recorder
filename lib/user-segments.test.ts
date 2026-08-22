@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, createOrgWithProject } from '@/tests/helpers';
 import { isDbAvailable } from '@/tests/db-available';
 import { db, schema } from '@/lib/db';
-import { clusterVectors, representatives, silhouette, runClusteringOnce, segmentsForProject, clusterMapForProject, clustersDataForProject } from './user-segments';
+import { clusterVectors, representatives, silhouette, runClusteringOnce, segmentsForProject, clusterMapForProject, clustersDataForProject, filterDimsByVisitors, type DimensionData } from './user-segments';
 
 const dbReady = await isDbAvailable();
 beforeEach(async () => {
@@ -31,6 +31,28 @@ function twoBlobs(n = 6): { vectors: number[][] } {
   for (let i = 0; i < n; i++) { vectors.push(a[i], b[i]); }
   return { vectors };
 }
+
+describe('filterDimsByVisitors', () => {
+  it('keeps only active visitors, recounts segment sizes, drops empties', () => {
+    const dims: DimensionData[] = [{
+      dimension: 'overall', analysis: '',
+      segments: [
+        { id: 'seg-a', name: 'A', description: '', analysis: '', size: 2 },
+        { id: 'seg-b', name: 'B', description: '', analysis: '', size: 1 },
+      ],
+      points: [
+        { visitorKey: 'v1', x: 0, y: 0, segmentId: 'seg-a', excerpt: '' },
+        { visitorKey: 'v2', x: 1, y: 1, segmentId: 'seg-a', excerpt: '' },
+        { visitorKey: 'v3', x: 2, y: 2, segmentId: 'seg-b', excerpt: '' },
+      ],
+    }];
+    const out = filterDimsByVisitors(dims, new Set(['v1']));
+    expect(out[0].points.map((p) => p.visitorKey)).toEqual(['v1']);
+    expect(out[0].segments).toEqual([{ id: 'seg-a', name: 'A', description: '', analysis: '', size: 1 }]);
+    // nobody active → the dimension disappears entirely
+    expect(filterDimsByVisitors(dims, new Set(['nobody']))).toEqual([]);
+  });
+});
 
 describe('clustering math', () => {
   it('finds k=2 for two clean blobs and separates them', () => {

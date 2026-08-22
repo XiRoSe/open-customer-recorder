@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TimelineBucket } from '@/lib/timeline';
-import { SOURCE_CATEGORIES, SOURCE_META, type SourceCategory } from '@/lib/traffic-source';
+import { TIMELINE_METRICS, type TimelineMetric } from '@/lib/timeline-metrics';
+import { SOURCE_CATEGORIES, SOURCE_META } from '@/lib/traffic-source';
+import { TAG_COLOR_HEX, isValidTagColor } from '@/lib/tag-colors';
 
 const W = 760;
 const H = 430;
@@ -14,18 +16,46 @@ const PAD_B = 36;
 const SEG_GAP = 2;   // 2px surface gap between stacked segments
 
 interface Hover { bucket: TimelineBucket; x: number; y: number }
+interface StackSeg { key: string; label: string; color: string; v: number }
 
-/** Stacked session volume by traffic source. Hover a bar for the
- * breakdown; click to open the sessions of that time slice. */
-export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
+const tagHex = (color: string) => (isValidTagColor(color) ? TAG_COLOR_HEX[color] : TAG_COLOR_HEX.gray);
+
+/** Stacked volume per time slot with a switchable measure: sessions,
+ * clicks, engaged, frustration (each stacked by traffic source) or
+ * tagged sessions (stacked by tag). Hover a bar for the breakdown;
+ * click to open the sessions of that time slice. */
+export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta }: {
   buckets: TimelineBucket[];
   bucketMs: number;
   sessionsBasePath: string;
+  tagMeta: Record<string, { color: string }>;
 }) {
   const router = useRouter();
+  const [metric, setMetric] = useState<TimelineMetric>('sessions');
   const [hover, setHover] = useState<Hover | null>(null);
 
-  const maxTotal = Math.max(1, ...buckets.map((b) => b.total));
+  // Tags in fixed order (busiest first across the window) so the stack
+  // and legend never reshuffle between buckets.
+  const tagOrder = useMemo(() => {
+    const sums = new Map<string, number>();
+    for (const b of buckets) for (const [name, n] of Object.entries(b.byTag)) sums.set(name, (sums.get(name) ?? 0) + n);
+    return [...sums.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+  }, [buckets]);
+
+  const stacksOf = (b: TimelineBucket): StackSeg[] => {
+    if (metric === 'tags') {
+      return tagOrder.map((name) => ({ key: name, label: name, color: tagHex(tagMeta[name]?.color ?? 'gray'), v: b.byTag[name] ?? 0 }));
+    }
+    const rec = metric === 'clicks' ? b.clicksBySource
+      : metric === 'engaged' ? b.engagedBySource
+      : metric === 'frustration' ? b.frustratedBySource
+      : b.bySource;
+    return SOURCE_CATEGORIES.map((s) => ({ key: s, label: SOURCE_META[s].label, color: SOURCE_META[s].color, v: rec[s] }));
+  };
+
+  const totalOf = (b: TimelineBucket) => stacksOf(b).reduce((a, s) => a + s.v, 0);
+
+  const maxTotal = Math.max(1, ...buckets.map(totalOf));
   // Scale tops out at a clean multiple of 10 so every 10% line labels an
   // integer, and the axis always runs 0..100% of the scale.
   const niceMax = Math.max(10, Math.ceil(maxTotal / 10) * 10);
@@ -34,10 +64,15 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
   const slot = plotW / buckets.length;
   const barW = Math.max(3, slot * 0.86);
 
-  const activeSources = useMemo(
-    () => SOURCE_CATEGORIES.filter((s) => buckets.some((b) => b.bySource[s] > 0)),
-    [buckets],
-  );
+  const activeKeys = useMemo(() => {
+    const present = new Set<string>();
+    for (const b of buckets) for (const s of stacksOf(b)) if (s.v > 0) present.add(s.key);
+    return present;
+    // stacksOf closes over metric/tagOrder — both are deps below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buckets, metric, tagOrder]);
+
+  const legend: StackSeg[] = (buckets[0] ? stacksOf(buckets[0]) : []).filter((s) => activeKeys.has(s.key));
 
   const hourly = bucketMs < 86_400_000;
   // Fixed UTC: buckets are cut on UTC boundaries, and the server and
@@ -52,15 +87,36 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
     router.push(`${sessionsBasePath}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&range=all`);
   };
 
+  const metricKeys = (Object.keys(TIMELINE_METRICS) as TimelineMetric[])
+    .filter((m) => m !== 'tags' || tagOrder.length > 0);
+
   return (
-    <div className="relative">
+    <div className="relative space-y-2">
       <style>{`
         @keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
         .bar-rise { animation: bar-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards; transform-box: fill-box; transform-origin: bottom; }
         @media (prefers-reduced-motion: reduce) { .bar-rise { animation: none; } }
       `}</style>
+
+      {/* measure switcher — each chip explains itself on hover */}
+      <div className="flex flex-wrap gap-1.5 justify-end">
+        {metricKeys.map((m) => (
+          <button
+            key={m}
+            type="button"
+            title={TIMELINE_METRICS[m].hint}
+            onClick={() => { setMetric(m); setHover(null); }}
+            className={`rounded-full px-3 py-0.5 text-xs font-medium border transition-colors ${
+              m === metric ? 'bg-foreground text-background border-foreground' : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            {TIMELINE_METRICS[m].label}
+          </button>
+        ))}
+      </div>
+
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
-           aria-label="Sessions over time, stacked by traffic source">
+           aria-label={`${TIMELINE_METRICS[metric].label} over time, stacked by ${metric === 'tags' ? 'tag' : 'traffic source'}`}>
         {/* grid: a line and label at every 10% of the scale, up to 100% */}
         {Array.from({ length: 11 }, (_, i) => i).map((i) => {
           const v = (niceMax * i) / 10;
@@ -74,35 +130,35 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
           );
         })}
 
-        {/* bars — bold, crisp, rising on load */}
+        {/* bars — bold, crisp, rising on load and on measure switch */}
         {buckets.map((b, i) => {
           const x = PAD_L + i * slot + (slot - barW) / 2;
+          const total = totalOf(b);
           let yCursor = PAD_T + plotH;
-          const segs = activeSources.map((s) => {
-            const v = b.bySource[s];
-            if (v === 0) return null;
-            const h = Math.max(2, (v / niceMax) * plotH - SEG_GAP);
+          const segs = stacksOf(b).map((s) => {
+            if (s.v === 0) return null;
+            const h = Math.max(2, (s.v / niceMax) * plotH - SEG_GAP);
             yCursor -= h + SEG_GAP;
-            return { s, y: yCursor + SEG_GAP, h, v };
+            return { ...s, y: yCursor + SEG_GAP, h };
           }).filter((seg): seg is NonNullable<typeof seg> => seg !== null);
           const topY = segs.length ? segs[segs.length - 1].y : PAD_T + plotH;
           return (
             <g key={b.start}
-               style={{ cursor: b.total > 0 ? 'pointer' : 'default' }}
-               onMouseEnter={() => b.total > 0 && setHover({ bucket: b, x: x + barW / 2, y: topY })}
+               style={{ cursor: total > 0 ? 'pointer' : 'default' }}
+               onMouseEnter={() => total > 0 && setHover({ bucket: b, x: x + barW / 2, y: topY })}
                onMouseLeave={() => setHover(null)}
-               onClick={() => b.total > 0 && gotoSlice(b)}>
+               onClick={() => total > 0 && gotoSlice(b)}>
               {/* invisible hit target taller than the mark */}
               <rect x={PAD_L + i * slot} y={PAD_T} width={slot} height={plotH} fill="transparent" />
-              <g className="bar-rise" style={{ animationDelay: `${i * 18}ms` }}>
+              <g key={metric} className="bar-rise" style={{ animationDelay: `${i * 18}ms` }}>
                 {segs.map((seg, si) => (
-                  <rect key={seg.s} x={x} y={seg.y} width={barW} height={seg.h}
+                  <rect key={seg.key} x={x} y={seg.y} width={barW} height={seg.h}
                         rx={si === segs.length - 1 ? 1 : 0}
                         shapeRendering="crispEdges"
-                        fill={SOURCE_META[seg.s].color} />
+                        fill={seg.color} />
                 ))}
               </g>
-              {b.spike && (
+              {metric === 'sessions' && b.spike && (
                 <g>
                   <circle cx={x + barW / 2} cy={topY - 10} r="3" fill="currentColor" opacity="0.85" />
                   <text x={x + barW / 2} y={topY - 16} textAnchor="middle" fontSize="9.5" className="fill-foreground" fontWeight="600">
@@ -140,14 +196,14 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
           }}
         >
           <div className="font-medium mb-1">
-            {fmtBucket(hover.bucket.start)} · {hover.bucket.total} {hover.bucket.total === 1 ? 'session' : 'sessions'}
-            {hover.bucket.spike && <span className="ml-1 text-muted-foreground">({hover.bucket.spike.factor}× normal)</span>}
+            {fmtBucket(hover.bucket.start)} · {totalOf(hover.bucket)} {TIMELINE_METRICS[metric].label.toLowerCase()}
+            {metric === 'sessions' && hover.bucket.spike && <span className="ml-1 text-muted-foreground">({hover.bucket.spike.factor}× normal)</span>}
           </div>
-          {activeSources.filter((s) => hover.bucket.bySource[s] > 0).map((s) => (
-            <div key={s} className="flex items-center gap-1.5 leading-5">
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: SOURCE_META[s].color }} />
-              <span className="text-muted-foreground">{SOURCE_META[s].label}</span>
-              <span className="ml-auto tabular-nums">{hover.bucket.bySource[s]}</span>
+          {stacksOf(hover.bucket).filter((s) => s.v > 0).map((s) => (
+            <div key={s.key} className="flex items-center gap-1.5 leading-5">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
+              <span className="text-muted-foreground">{s.label}</span>
+              <span className="ml-auto tabular-nums">{s.v}</span>
             </div>
           ))}
           <div className="text-muted-foreground mt-1">click to open these sessions</div>
@@ -156,10 +212,10 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath }: {
 
       {/* legend — identity never by color alone */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 px-1">
-        {activeSources.map((s: SourceCategory) => (
-          <span key={s} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: SOURCE_META[s].color }} />
-            {SOURCE_META[s].label}
+        {legend.map((s) => (
+          <span key={s.key} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: s.color }} />
+            {s.label}
           </span>
         ))}
         {hourly && <span className="ml-auto text-xs text-muted-foreground">times in UTC</span>}

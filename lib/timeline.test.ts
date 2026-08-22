@@ -27,6 +27,33 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
     expect(t.totals.newVisitors).toBe(1);
   });
 
+  it('fetches per-session clicks and tags for the metric stacks', async () => {
+    const { project } = await createOrgWithProject();
+    const [s] = await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a1', startedAt: new Date(Date.now() - 3600_000),
+      endedAt: new Date(), eventCount: 2, durationMs: 45_000, blobPath: '', pageUrl: 'https://x.test/',
+    }).returning();
+    await db.insert(schema.sessionSummaries).values({
+      sessionId: s.id, digestVersion: 1, narrative: '', insights: [], status: 'done',
+      digest: { steps: [
+        { t: 1, kind: 'click', label: 'Buy', tag: 'button' },
+        { t: 2, kind: 'click', label: 'Buy again', tag: 'button' },
+        { t: 3, kind: 'nav', to: '/checkout' },
+      ] },
+    });
+    const [rule] = await db.insert(schema.tagRules).values({
+      projectId: project.id, name: 'Checkout', kind: 'url_contains', value: 'checkout', color: 'purple',
+    }).returning();
+    await db.insert(schema.sessionTags).values({ sessionId: s.id, tagRuleId: rule.id });
+
+    const t = await timelineForProject(project.id, '24h');
+    const withData = t.buckets.find((b) => b.total > 0)!;
+    expect(withData.clicksBySource.direct).toBe(2);
+    expect(withData.engagedBySource.direct).toBe(1);
+    expect(withData.byTag).toEqual({ Checkout: 1 });
+    expect(t.tagMeta).toEqual({ Checkout: { color: 'purple' } });
+  });
+
   it('all-time window ignores sessions with clocks before the project existed', async () => {
     const { project } = await createOrgWithProject();
     await db.insert(schema.sessions).values([
@@ -159,6 +186,24 @@ describe('buildTimeline', () => {
     const t = buildTimeline(rows, END, WINDOW, HOUR);
     expect(t.totals.avgDurationMs).toBe(20_000);
     expect(t.totals.insightCounts).toEqual({ dead_click: 2, rage_click: 1 });
+  });
+});
+
+describe('metric stacks', () => {
+  it('aggregates clicks, engagement, frustration by source and sessions by tag', () => {
+    const rows = [
+      row(2, { referrer: 'https://www.google.com/', clicks: 5, durationMs: 60_000, tags: [{ name: 'Checkout', color: 'purple' }] }),
+      row(3, { clicks: 2, frustrated: true, tags: [{ name: 'Checkout', color: 'purple' }, { name: 'Pricing', color: 'blue' }] }),
+      row(4, { clicks: 0 }),
+    ];
+    const t = buildTimeline(rows, END, WINDOW, HOUR);
+    const sum = (pick: (b: (typeof t.buckets)[number]) => Record<string, number>) =>
+      t.buckets.reduce((acc, b) => { for (const [k, v] of Object.entries(pick(b))) acc[k] = (acc[k] ?? 0) + v; return acc; }, {} as Record<string, number>);
+    expect(sum((b) => b.clicksBySource)).toMatchObject({ search: 5, direct: 2 });
+    expect(sum((b) => b.engagedBySource)).toMatchObject({ search: 1, direct: 0 });
+    expect(sum((b) => b.frustratedBySource)).toMatchObject({ direct: 1 });
+    expect(sum((b) => b.byTag)).toEqual({ Checkout: 2, Pricing: 1 });
+    expect(t.tagMeta).toEqual({ Checkout: { color: 'purple' }, Pricing: { color: 'blue' } });
   });
 });
 
