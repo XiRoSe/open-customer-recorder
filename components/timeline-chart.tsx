@@ -27,7 +27,7 @@ const tagHex = (color: string) => (isValidTagColor(color) ? TAG_COLOR_HEX[color]
  * passed in as a slot, measure chips beside them) so the selectors sit
  * together outside the chart card; trend chips render inside the card.
  * Hover a bar for the breakdown; click to open that time slice. */
-export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot }: {
+export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot, patternsSlot }: {
   buckets: TimelineBucket[];
   bucketMs: number;
   sessionsBasePath: string;
@@ -35,6 +35,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
   rangeSlot?: React.ReactNode;
   analysisSlot?: React.ReactNode;
   trendsSlot?: React.ReactNode;
+  patternsSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [metric, setMetric] = useState<TimelineMetric>('sessions');
@@ -245,6 +246,8 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
         ))}
         {hourly && <span className="ml-auto text-xs text-muted-foreground">times in UTC</span>}
       </div>
+
+      {patternsSlot}
       </Card>
     </div>
   );

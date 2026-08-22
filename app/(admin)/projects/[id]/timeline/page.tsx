@@ -101,6 +101,29 @@ export default async function TimelinePage(props: {
               ))}
             </div>
           }
+          patternsSlot={patterns ? (
+            /* LLM pattern read: peak/dead times, the opening, the risk —
+               built in the background from deterministic aggregates. */
+            <div className="border-t pt-3">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
+                   title="An analyst read of this window's rhythm: when traffic peaks, when it goes quiet, the most actionable opening, and what to keep an eye on. Generated from the measured numbers above.">
+                Patterns &amp; opportunities
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                {([
+                  ['Peak times', patterns.peaks, 'When sessions concentrate — the hours or days your traffic actually shows up.'],
+                  ['Quiet times', patterns.quiet, 'Stretches with little to no traffic, and what they imply.'],
+                  ['Opportunity', patterns.opportunity, 'The most actionable opening in this window’s numbers.'],
+                  ['Worth watching', patterns.watch, 'The metric or pattern most likely to change your read next.'],
+                ] as const).filter(([, body]) => body).map(([label, body, explain]) => (
+                  <div key={label} className="border-l-2 border-foreground/20 pl-3">
+                    <div className="text-xs font-medium text-foreground mb-0.5 cursor-help" title={explain}>{label}</div>
+                    <p className="text-sm text-muted-foreground leading-relaxed m-0">{body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         />
       ) : (
         <>
@@ -222,29 +245,6 @@ export default async function TimelinePage(props: {
         </div>
       )}
 
-      {/* LLM pattern read: peak/dead times, the opening, the risk —
-          built in the background from deterministic aggregates. */}
-      {patterns && data.totals.sessions > 0 && (
-        <Card className="p-4">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3"
-               title="An analyst read of this window's rhythm: when traffic peaks, when it goes quiet, the most actionable opening, and what to keep an eye on. Generated from the measured numbers above.">
-            Patterns &amp; opportunities
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-            {([
-              ['Peak times', patterns.peaks, 'When sessions concentrate — the hours or days your traffic actually shows up.'],
-              ['Quiet times', patterns.quiet, 'Stretches with little to no traffic, and what they imply.'],
-              ['Opportunity', patterns.opportunity, 'The most actionable opening in this window’s numbers.'],
-              ['Worth watching', patterns.watch, 'The metric or pattern most likely to change your read next.'],
-            ] as const).filter(([, body]) => body).map(([label, body, explain]) => (
-              <div key={label} className="border-l-2 border-foreground/20 pl-3">
-                <div className="text-xs font-medium text-foreground mb-0.5 cursor-help" title={explain}>{label}</div>
-                <p className="text-sm text-muted-foreground leading-relaxed m-0">{body}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
     </main>
   );
 }
