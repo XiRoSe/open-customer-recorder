@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TimelineBucket } from '@/lib/timeline';
 import { TIMELINE_METRICS, type TimelineMetric } from '@/lib/timeline-metrics';
+import { Card } from '@/components/ui/card';
 import { SOURCE_CATEGORIES, SOURCE_META } from '@/lib/traffic-source';
 import { TAG_COLOR_HEX, isValidTagColor } from '@/lib/tag-colors';
 
@@ -22,13 +23,18 @@ const tagHex = (color: string) => (isValidTagColor(color) ? TAG_COLOR_HEX[color]
 
 /** Stacked volume per time slot with a switchable measure: sessions,
  * clicks, engaged, frustration (each stacked by traffic source) or
- * tagged sessions (stacked by tag). Hover a bar for the breakdown;
- * click to open the sessions of that time slice. */
-export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta }: {
+ * tagged sessions (stacked by tag). Owns the control row (range pills
+ * passed in as a slot, measure chips beside them) so the selectors sit
+ * together outside the chart card; trend chips render inside the card.
+ * Hover a bar for the breakdown; click to open that time slice. */
+export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot }: {
   buckets: TimelineBucket[];
   bucketMs: number;
   sessionsBasePath: string;
   tagMeta: Record<string, { color: string }>;
+  rangeSlot?: React.ReactNode;
+  analysisSlot?: React.ReactNode;
+  trendsSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [metric, setMetric] = useState<TimelineMetric>('sessions');
@@ -91,30 +97,39 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta }: 
     .filter((m) => m !== 'tags' || tagOrder.length > 0);
 
   return (
-    <div className="relative space-y-2">
+    <div className="space-y-4">
       <style>{`
         @keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
         .bar-rise { animation: bar-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards; transform-box: fill-box; transform-origin: bottom; }
         @media (prefers-reduced-motion: reduce) { .bar-rise { animation: none; } }
       `}</style>
 
-      {/* measure switcher — each chip explains itself on hover */}
-      <div className="flex flex-wrap gap-1.5 justify-end">
-        {metricKeys.map((m) => (
-          <button
-            key={m}
-            type="button"
-            title={TIMELINE_METRICS[m].hint}
-            onClick={() => { setMetric(m); setHover(null); }}
-            className={`rounded-full px-3 py-0.5 text-xs font-medium border transition-colors ${
-              m === metric ? 'bg-foreground text-background border-foreground' : 'text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {TIMELINE_METRICS[m].label}
-          </button>
-        ))}
+      {/* control row: range pills (slot) + measure switcher — each chip
+          explains itself on hover */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {rangeSlot}
+        <div className="flex flex-wrap gap-1.5 justify-end">
+          {metricKeys.map((m) => (
+            <button
+              key={m}
+              type="button"
+              title={TIMELINE_METRICS[m].hint}
+              onClick={() => { setMetric(m); setHover(null); }}
+              className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
+                m === metric ? 'bg-foreground text-background border-foreground' : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {TIMELINE_METRICS[m].label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {analysisSlot}
+
+      <Card className="p-4 space-y-3">
+      {trendsSlot}
+      <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
            aria-label={`${TIMELINE_METRICS[metric].label} over time, stacked by ${metric === 'tags' ? 'tag' : 'traffic source'}`}>
         {/* grid: a line and label at every 10% of the scale, up to 100% */}
@@ -209,9 +224,10 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta }: 
           <div className="text-muted-foreground mt-1">click to open these sessions</div>
         </div>
       )}
+      </div>
 
       {/* legend — identity never by color alone */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 px-1">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 px-1">
         {legend.map((s) => (
           <span key={s.key} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: s.color }} />
@@ -220,6 +236,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta }: 
         ))}
         {hourly && <span className="ml-auto text-xs text-muted-foreground">times in UTC</span>}
       </div>
+      </Card>
     </div>
   );
 }

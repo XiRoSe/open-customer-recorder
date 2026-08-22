@@ -67,58 +67,48 @@ export default async function TimelinePage(props: {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div role="tablist" aria-label="Time range" className="inline-flex rounded-lg border p-0.5 gap-0.5">
-          {Object.keys(TIMELINE_RANGES).map((key) => (
-            <Link
-              key={key}
-              role="tab"
-              aria-selected={key === rangeKey}
-              href={key === DEFAULT_RANGE ? basePath : `${basePath}?range=${key}`}
-              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
-                key === rangeKey ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {key}
-            </Link>
-          ))}
-        </div>
-        {/* trend chips — deterministic, period over period */}
-        <div className="flex flex-wrap gap-1.5">
-          {data.trends.map((t) => (
-            <span
-              key={t.label}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                t.direction === 'up' && t.label === 'Frustration' ? 'text-rose-700 dark:text-rose-400 bg-rose-500/10'
-                : t.direction === 'up' ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
-                : t.direction === 'down' && t.label === 'Frustration' ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
-                : t.direction === 'down' ? 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
-                : 'text-muted-foreground'
-              }`}
-              title={`${CHIP_EXPLAINERS[t.label] ?? t.label}${rangeKey !== 'all' ? ` Compared with the previous ${TIMELINE_RANGES[rangeKey].label.replace('last ', '')}.` : ''}`}
-            >
-              <span aria-hidden>{DIRECTION_GLYPH[t.direction]}</span>
-              {t.label}: {t.value}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {analysis && (
-        <div className="rounded-md bg-muted/50 border-l-2 border-foreground/70 px-4 py-3">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Analyst read</div>
-          <p className="text-sm leading-relaxed m-0 max-w-4xl">{analysis}</p>
-        </div>
-      )}
-
       {data.totals.sessions > 0 ? (
-        <Card className="p-4">
-          <TimelineChart buckets={data.buckets} bucketMs={data.bucketMs} tagMeta={data.tagMeta} sessionsBasePath={`/projects/${id}/sessions`} />
-        </Card>
+        <TimelineChart
+          buckets={data.buckets}
+          bucketMs={data.bucketMs}
+          tagMeta={data.tagMeta}
+          sessionsBasePath={`/projects/${id}/sessions`}
+          rangeSlot={<RangePills basePath={basePath} rangeKey={rangeKey} />}
+          analysisSlot={analysis ? (
+            <div className="rounded-md bg-muted/50 border-l-2 border-foreground/70 px-4 py-3">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Analyst read</div>
+              <p className="text-sm leading-relaxed m-0 max-w-4xl">{analysis}</p>
+            </div>
+          ) : null}
+          trendsSlot={
+            /* trend chips — deterministic, period over period */
+            <div className="flex flex-wrap gap-1.5">
+              {data.trends.map((t) => (
+                <span
+                  key={t.label}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                    t.direction === 'up' && t.label === 'Frustration' ? 'text-rose-700 dark:text-rose-400 bg-rose-500/10'
+                    : t.direction === 'up' ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
+                    : t.direction === 'down' && t.label === 'Frustration' ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
+                    : t.direction === 'down' ? 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
+                    : 'text-muted-foreground'
+                  }`}
+                  title={`${CHIP_EXPLAINERS[t.label] ?? t.label}${rangeKey !== 'all' ? ` Compared with the previous ${TIMELINE_RANGES[rangeKey].label.replace('last ', '')}.` : ''}`}
+                >
+                  <span aria-hidden>{DIRECTION_GLYPH[t.direction]}</span>
+                  {t.label}: {t.value}
+                </span>
+              ))}
+            </div>
+          }
+        />
       ) : (
-        <Card className="p-8 text-center text-sm text-muted-foreground">
-          No sessions in the {TIMELINE_RANGES[rangeKey].label}.
-        </Card>
+        <>
+          <RangePills basePath={basePath} rangeKey={rangeKey} />
+          <Card className="p-8 text-center text-sm text-muted-foreground">
+            No sessions in the {TIMELINE_RANGES[rangeKey].label}.
+          </Card>
+        </>
       )}
 
       {/* measurement breakdowns — one titled section per lens */}
@@ -219,6 +209,26 @@ export default async function TimelinePage(props: {
         </Card>
       )}
     </main>
+  );
+}
+
+function RangePills({ basePath, rangeKey }: { basePath: string; rangeKey: string }) {
+  return (
+    <div role="tablist" aria-label="Time range" className="inline-flex rounded-lg border p-0.5 gap-0.5">
+      {Object.keys(TIMELINE_RANGES).map((key) => (
+        <Link
+          key={key}
+          role="tab"
+          aria-selected={key === rangeKey}
+          href={key === DEFAULT_RANGE ? basePath : `${basePath}?range=${key}`}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
+            key === rangeKey ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          {key}
+        </Link>
+      ))}
+    </div>
   );
 }
 

@@ -62,31 +62,16 @@ export default async function ClustersPage(props: {
         </div>
       </div>
 
-      <div role="tablist" aria-label="Active in range" className="inline-flex rounded-lg border p-0.5 gap-0.5"
-           title="Show only visitors with a recorded session in this range. Segments and positions stay as analyzed over the full history.">
-        {Object.keys(TIMELINE_RANGES).map((key) => (
-          <Link
-            key={key}
-            role="tab"
-            aria-selected={key === rangeKey}
-            href={key === 'all' ? basePath : `${basePath}?range=${key}`}
-            className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
-              key === rangeKey ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {key}
-          </Link>
-        ))}
-      </div>
-
       {points.length > 0 ? (
-        <Card className="p-4">
-          <ClusterMap dims={dims} sessionsBasePath={`/projects/${id}/sessions`} />
-        </Card>
+        <ClusterMap dims={dims} sessionsBasePath={`/projects/${id}/sessions`}
+                    rangeSlot={<ClusterRangePills basePath={basePath} rangeKey={rangeKey} />} />
       ) : mappedTotal > 0 ? (
-        <Card className="p-8 text-center text-sm text-muted-foreground">
-          None of the mapped visitors had a session in the {TIMELINE_RANGES[rangeKey].label}.
-        </Card>
+        <>
+          <ClusterRangePills basePath={basePath} rangeKey={rangeKey} />
+          <Card className="p-8 text-center text-sm text-muted-foreground">
+            None of the mapped visitors had a session in the {TIMELINE_RANGES[rangeKey].label}.
+          </Card>
+        </>
       ) : (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           No clusters yet. Segments appear automatically once at least {MIN_PROFILES_TO_CLUSTER} visitors
@@ -94,5 +79,26 @@ export default async function ClustersPage(props: {
         </Card>
       )}
     </main>
+  );
+}
+
+function ClusterRangePills({ basePath, rangeKey }: { basePath: string; rangeKey: string }) {
+  return (
+    <div role="tablist" aria-label="Active in range" className="inline-flex rounded-lg border p-0.5 gap-0.5"
+         title="Show only visitors with a recorded session in this range. Segments and positions stay as analyzed over the full history.">
+      {Object.keys(TIMELINE_RANGES).map((key) => (
+        <Link
+          key={key}
+          role="tab"
+          aria-selected={key === rangeKey}
+          href={key === 'all' ? basePath : `${basePath}?range=${key}`}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
+            key === rangeKey ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          {key}
+        </Link>
+      ))}
+    </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DimensionData, Segment } from '@/lib/user-segments';
+import { Card } from '@/components/ui/card';
 
 export const SEGMENT_PALETTE = [
   '#10b981', '#0ea5e9', '#8b5cf6', '#f59e0b', '#f43f5e', '#06b6d4', '#84cc16', '#d946ef',
@@ -43,10 +44,13 @@ const BRASS = '#B08D57';
 interface HoverInfo { visitorKey: string; excerpt: string; segmentId: string | null; cx: number; cy: number }
 
 /** Multi-dimensional visitor map: pick a research dimension and the dots
- * glide to that dimension's positions, recolored by its segments. */
-export function ClusterMap({ dims, sessionsBasePath }: {
+ * glide to that dimension's positions, recolored by its segments. Owns
+ * the control row (range pills passed in as a slot, dimension chips
+ * beside them) so the selectors sit together outside the map card. */
+export function ClusterMap({ dims, sessionsBasePath, rangeSlot }: {
   dims: DimensionData[];
   sessionsBasePath: string;
+  rangeSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [dimKey, setDimKey] = useState(dims[0]?.dimension ?? 'overall');
@@ -82,26 +86,31 @@ export function ClusterMap({ dims, sessionsBasePath }: {
   if (!dim) return null;
 
   return (
-    <div className="space-y-3">
-      {/* dimension switcher — each chip explains itself on hover */}
-      <div className="flex flex-wrap gap-1.5 justify-end">
-        {dims.map((d) => (
-          <button
-            key={d.dimension}
-            type="button"
-            title={DIMENSION_GLOSSARY[d.dimension]}
-            onClick={() => { setDimKey(d.dimension); setFocusSegment(null); setHover(null); }}
-            className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
-              d.dimension === dim.dimension
-                ? 'bg-foreground text-background border-foreground'
-                : 'text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {DIMENSION_LABELS[d.dimension] ?? d.dimension}
-          </button>
-        ))}
+    <div className="space-y-4">
+      {/* control row: range pills (slot) + dimension switcher — each
+          chip explains itself on hover */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {rangeSlot}
+        <div className="flex flex-wrap gap-1.5 justify-end">
+          {dims.map((d) => (
+            <button
+              key={d.dimension}
+              type="button"
+              title={DIMENSION_GLOSSARY[d.dimension]}
+              onClick={() => { setDimKey(d.dimension); setFocusSegment(null); setHover(null); }}
+              className={`rounded-full px-3.5 py-1 text-sm font-medium border transition-colors ${
+                d.dimension === dim.dimension
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {DIMENSION_LABELS[d.dimension] ?? d.dimension}
+            </button>
+          ))}
+        </div>
       </div>
 
+      <Card className="p-4 space-y-3">
       {/* batch-level analyst read for this dimension */}
       {dim.analysis && (
         <div className="rounded-md bg-muted/50 border-l-2 border-foreground/70 px-4 py-3">
@@ -205,6 +214,7 @@ export function ClusterMap({ dims, sessionsBasePath }: {
           </button>
         ))}
       </div>
+      </Card>
     </div>
   );
 }
