@@ -130,21 +130,6 @@ export default async function UsersPage(props: {
             {activeRange.hours !== null ? <> active in the last {activeRange.label}</> : null}
           </p>
         </div>
-        <div className="flex gap-2 text-sm">
-          <Link href={`/projects/${id}/overview`} className="text-muted-foreground hover:underline">Overview</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`${sessionsHrefBase}${activeRange.value === '24h' ? '' : `?range=${activeRange.value}`}`} className="text-muted-foreground hover:underline">Sessions</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>
-          <span className="text-muted-foreground">·</span>
-          <span className="font-medium">Users</span>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/clusters`} className="text-muted-foreground hover:underline">Clusters</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
-        </div>
       </div>
 
       <RangeTabs basePath={basePath} currentRange={activeRange.value} />

@@ -140,21 +140,6 @@ export default async function SessionsPage(props: {
             {sliceFrom && sliceTo ? <> · {new Date(sliceFrom).toLocaleString('en-GB')} – {new Date(sliceTo).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · <Link href={basePath} className="underline">clear</Link></> : null}
           </p>
         </div>
-        <div className="flex gap-2 text-sm items-baseline">
-          <Link href={`/projects/${id}/overview`} className="text-muted-foreground hover:underline">Overview</Link>
-          <span className="text-muted-foreground">·</span>
-          <span className="font-medium">Sessions</span>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/users${activeRange.value === '24h' ? '' : `?range=${activeRange.value}`}`} className="text-muted-foreground hover:underline">Users</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/clusters`} className="text-muted-foreground hover:underline">Clusters</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
-        </div>
       </div>
 
       {user && visitorProfile?.profileText && (

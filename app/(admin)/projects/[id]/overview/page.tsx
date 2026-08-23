@@ -62,21 +62,6 @@ export default async function OverviewPage(props: {
             {' '}in the {TIMELINE_RANGES[rangeKey].label}
           </p>
         </div>
-        <div className="flex gap-2 text-sm items-baseline">
-          <span className="font-medium">Overview</span>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/sessions`} className="text-muted-foreground hover:underline">Sessions</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/timeline`} className="text-muted-foreground hover:underline">Timeline</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/users`} className="text-muted-foreground hover:underline">Users</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/clusters`} className="text-muted-foreground hover:underline">Clusters</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
-        </div>
       </div>
 
       <div role="tablist" aria-label="Time range" className="inline-flex rounded-lg border p-0.5 gap-0.5"

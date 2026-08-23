@@ -53,21 +53,6 @@ export default async function TimelinePage(props: {
             </> : null}
           </p>
         </div>
-        <div className="flex gap-2 text-sm items-baseline">
-          <Link href={`/projects/${id}/overview`} className="text-muted-foreground hover:underline">Overview</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/sessions`} className="text-muted-foreground hover:underline">Sessions</Link>
-          <span className="text-muted-foreground">·</span>
-          <span className="font-medium">Timeline</span>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/users`} className="text-muted-foreground hover:underline">Users</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/clusters`} className="text-muted-foreground hover:underline">Clusters</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/tags`} className="text-muted-foreground hover:underline">Tags</Link>
-          <span className="text-muted-foreground">·</span>
-          <Link href={`/projects/${id}/settings`} className="text-muted-foreground hover:underline">Settings</Link>
-        </div>
       </div>
 
       {data.totals.sessions > 0 ? (
