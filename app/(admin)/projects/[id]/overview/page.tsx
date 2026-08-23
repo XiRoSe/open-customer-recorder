@@ -7,6 +7,7 @@ import { TIMELINE_RANGES } from '@/lib/timeline';
 import { overviewForProject } from '@/lib/overview';
 import { SEGMENT_PALETTE } from '@/lib/segment-palette';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 
 const READ_HEADING: Record<string, string> = {
   '24h': "Today's read", '7d': "This week's read", '30d': "This month's read", 'all': 'All-time read',
@@ -63,6 +64,8 @@ export default async function OverviewPage(props: {
           </p>
         </div>
       </div>
+
+      <HeaderRule />
 
       <div role="tablist" aria-label="Time range" className="inline-flex rounded-lg border p-0.5 gap-0.5"
            title="Everything below — pulse, read, attention items, activity — follows the selected range.">

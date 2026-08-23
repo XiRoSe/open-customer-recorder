@@ -7,6 +7,7 @@ import { getAppSettings } from '@/lib/app-settings';
 import { infraStats } from '@/lib/infra-stats';
 import { SettingsToggles } from '@/components/settings-toggles';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 
 function fmtBytes(n: number): string {
   if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
@@ -80,6 +81,8 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           <p className="text-sm text-muted-foreground">Feature toggles apply within a minute — no redeploy needed.</p>
         </div>
       </div>
+
+      <HeaderRule />
 
       <SettingsToggles initial={settings} />
 

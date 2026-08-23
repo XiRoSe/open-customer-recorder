@@ -8,6 +8,7 @@ import { SOURCE_CATEGORIES, SOURCE_META } from '@/lib/traffic-source';
 import { TimelineChart } from '@/components/timeline-chart';
 import { BreakdownRows } from '@/components/breakdown-rows';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 
 const DIRECTION_GLYPH: Record<string, string> = { up: '▲', down: '▼', flat: '—' };
 
@@ -54,6 +55,8 @@ export default async function TimelinePage(props: {
           </p>
         </div>
       </div>
+
+      <HeaderRule />
 
       {data.totals.sessions > 0 ? (
         <TimelineChart

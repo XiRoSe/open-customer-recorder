@@ -4,6 +4,7 @@ import { db, schema } from '@/lib/db';
 import { and, eq, sql, asc, desc, count, sum, max, gt } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RangeTabs, resolveRange, rangeCutoff } from '@/components/range-tabs';
 import { ExcludeUserButton } from '@/components/exclude-user-button';
@@ -131,6 +132,8 @@ export default async function UsersPage(props: {
           </p>
         </div>
       </div>
+
+      <HeaderRule />
 
       <RangeTabs basePath={basePath} currentRange={activeRange.value} />
 

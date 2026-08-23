@@ -4,6 +4,7 @@ import { db, schema } from '@/lib/db';
 import { and, count, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddTagRuleForm } from '@/components/add-tag-rule-form';
@@ -49,6 +50,8 @@ export default async function TagsPage(props: { params: Promise<{ id: string }> 
           </p>
         </div>
       </div>
+
+      <HeaderRule />
 
       <AddTagRuleForm projectId={id} />
 

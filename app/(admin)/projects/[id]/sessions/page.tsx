@@ -11,6 +11,7 @@ import { SummaryCell } from '@/components/summary-cell';
 import type { TagColor } from '@/lib/tag-colors';
 import { RefreshOnReturn } from '@/components/refresh-on-return';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DeleteSessionButton } from '@/components/delete-session-button';
@@ -141,6 +142,8 @@ export default async function SessionsPage(props: {
           </p>
         </div>
       </div>
+
+      <HeaderRule />
 
       {user && visitorProfile?.profileText && (
         <Card className="p-4">

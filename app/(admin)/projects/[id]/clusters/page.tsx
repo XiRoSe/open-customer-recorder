@@ -7,6 +7,7 @@ import { clustersDataForProject, activeVisitorKeys, filterDimsByVisitors, MIN_PR
 import { TIMELINE_RANGES } from '@/lib/timeline';
 import { ClusterMap } from '@/components/cluster-map';
 import { Card } from '@/components/ui/card';
+import { HeaderRule } from '@/components/header-rule';
 
 export default async function ClustersPage(props: {
   params: Promise<{ id: string }>;
@@ -48,6 +49,8 @@ export default async function ClustersPage(props: {
           </p>
         </div>
       </div>
+
+      <HeaderRule />
 
       {points.length > 0 ? (
         <ClusterMap dims={dims} sessionsBasePath={`/projects/${id}/sessions`}
