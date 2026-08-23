@@ -4,7 +4,6 @@ import { nanoid } from 'nanoid';
 
 export async function resetDb() {
   // delete in reverse dependency order
-  await db.delete(schema.sessionLinks);
   await db.delete(schema.sessionViews);
   await db.delete(schema.sessions);
   await db.delete(schema.projects);

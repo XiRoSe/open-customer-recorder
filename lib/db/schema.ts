@@ -35,7 +35,6 @@ export const sessions = pgTable('sessions', {
   referrer: text('referrer'),
   pageCount: integer('page_count').notNull().default(0),
   eventCount: integer('event_count').notNull().default(0),
-  hasErrors: boolean('has_errors').notNull().default(false),
   country: text('country'),
   browser: text('browser'),
   os: text('os'),
@@ -288,12 +287,3 @@ export const timelineAnalyses = pgTable('timeline_analyses', {
   projectRangeIdx: uniqueIndex('timeline_analyses_project_range_idx').on(t.projectId, t.rangeKey),
 }));
 
-export const sessionLinks = pgTable('session_links', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  sessionId: uuid('session_id').notNull().references(() => sessions.id, { onDelete: 'cascade' }),
-  kind: text('kind').notNull(),
-  externalId: text('external_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  kindIdx: index('session_links_kind_idx').on(t.kind, t.externalId),
-}));
