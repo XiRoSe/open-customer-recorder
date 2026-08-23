@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { checkAdminCredentials, signSessionJwt, setSessionCookie } from '@/lib/auth';
+import { authenticateAdmin, signSessionJwt, setSessionCookie } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
   const password = typeof body.password === 'string' ? body.password : null;
   if (!email || !password) return NextResponse.json({ error: 'email + password required' }, { status: 400 });
 
-  if (!checkAdminCredentials(email, password)) {
+  const admin = await authenticateAdmin(email, password);
+  if (!admin) {
     return NextResponse.json({ error: 'invalid credentials' }, { status: 401 });
   }
 
@@ -19,7 +20,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'org not initialized; restart the app' }, { status: 503 });
   }
 
-  const token = await signSessionJwt({ orgId: org.id, email: email.toLowerCase().trim() });
+  const token = await signSessionJwt({
+    orgId: org.id,
+    email: admin.email,
+    userId: admin.userId,
+    name: admin.name,
+    userRole: admin.userRole,
+  });
   await setSessionCookie(token);
   return NextResponse.json({ ok: true });
 }

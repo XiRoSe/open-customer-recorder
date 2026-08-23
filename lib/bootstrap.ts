@@ -43,6 +43,34 @@ export async function ensureSingletonOrg() {
 }
 
 /**
+ * Seed admin_users from the legacy env credentials on first boot after
+ * the users-management migration. Runs only when the table is empty —
+ * after that the Team card owns the rows and env changes are ignored
+ * (except the lazy login fallback in lib/auth.ts). The first env entry
+ * becomes the owner.
+ */
+export async function ensureAdminUsers() {
+  const [{ value: existing }] = await db.select({ value: count() }).from(schema.adminUsers);
+  if (existing > 0) return;
+  const { envAdminCreds, nameFromEmail } = await import('@/lib/auth');
+  const creds = envAdminCreds();
+  if (creds.length === 0) return;
+  const [org] = await db.select().from(schema.organizations).limit(1);
+  if (!org) return;
+  const bcrypt = (await import('bcryptjs')).default;
+  for (let i = 0; i < creds.length; i++) {
+    await db.insert(schema.adminUsers).values({
+      orgId: org.id,
+      email: creds[i].email,
+      name: nameFromEmail(creds[i].email),
+      passwordHash: await bcrypt.hash(creds[i].password, 10),
+      role: i === 0 ? 'owner' : 'member',
+    }).onConflictDoNothing();
+  }
+  console.log(`[bootstrap] seeded ${creds.length} admin user(s) from env credentials`);
+}
+
+/**
  * Wipe sessions that captured no events and are older than 5 minutes.
  *
  * With the lazy-/start recorder these rows shouldn't be created at all,

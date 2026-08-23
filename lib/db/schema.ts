@@ -7,8 +7,23 @@ export const organizations = pgTable('organizations', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-// NOTE: no `users` table for MVP. Auth uses ADMIN_EMAIL/ADMIN_PASSWORD env vars.
-// We'll add `users` when this goes SaaS.
+// Admin accounts. Seeded at boot from the legacy env credentials
+// (ADMINS_CREDS / ADMIN_EMAIL+ADMIN_PASSWORD) so upgrading deploys keep
+// their logins; after that the DB is the source of truth and the Team
+// card in Settings manages rows. `role` gates team mutations ('owner')
+// vs. everything else ('member'). Deactivated rows keep their history
+// (session_views etc. key on email) but can no longer log in.
+export const adminUsers = pgTable('admin_users', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  role: text('role').notNull().default('member'), // 'owner' | 'member'
+  active: boolean('active').notNull().default(true),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const projects = pgTable('projects', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -283,6 +298,34 @@ export const timelineRollups = pgTable('timeline_rollups', {
   builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   projectHourIdx: uniqueIndex('timeline_rollups_project_hour_idx').on(t.projectId, t.hourStart),
+}));
+
+// Researcher conversations, one per (admin, project, conversation). The
+// title comes from the first question (trimmed to a few words) and
+// powers the History view; lastMessageAt orders it.
+export const researcherThreads = pgTable('researcher_threads', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => adminUsers.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  userProjectIdx: index('researcher_threads_user_project_idx').on(t.userId, t.projectId, t.lastMessageAt),
+}));
+
+// One row per turn half. Assistant rows carry the full render payload
+// (blocks, footprints, citations, caveat, follow-ups) as jsonb so History
+// recall replays instantly without re-running anything.
+export const researcherMessages = pgTable('researcher_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  threadId: uuid('thread_id').notNull().references(() => researcherThreads.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // 'user' | 'assistant'
+  content: text('content').notNull(),
+  payload: jsonb('payload'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  threadIdx: index('researcher_messages_thread_idx').on(t.threadId, t.createdAt),
 }));
 
 // Cached analyst read of the timeline window per range (24h / 7d / 30d),

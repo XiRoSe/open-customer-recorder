@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { timingSafeEqual } from 'node:crypto';
+import bcrypt from 'bcryptjs';
 
 const ALG = 'HS256';
 const SESSION_COOKIE = 'mega_session';
@@ -21,10 +22,11 @@ function constEq(a: string, b: string): boolean {
 
 interface AdminCred { email: string; password: string; }
 
-// Admins come from ADMINS_CREDS, a JSON array of { email, password }.
-// Falls back to the legacy single-admin ADMIN_EMAIL/ADMIN_PASSWORD vars
-// when ADMINS_CREDS is absent or malformed, so existing deploys keep working.
-function adminCreds(): AdminCred[] {
+// Legacy env credentials: ADMINS_CREDS, a JSON array of { email, password },
+// falling back to single-admin ADMIN_EMAIL/ADMIN_PASSWORD. Since the
+// admin_users table these only matter twice: boot seeding (lib/bootstrap)
+// and the one-release login fallback below.
+export function envAdminCreds(): AdminCred[] {
   const raw = process.env.ADMINS_CREDS;
   if (raw) {
     try {
@@ -48,19 +50,85 @@ export function checkAdminCredentials(email: string, password: string): boolean 
   const candidate = email.toLowerCase().trim();
   // Check every entry (no early return) to avoid leaking which email matched.
   let ok = false;
-  for (const cred of adminCreds()) {
+  for (const cred of envAdminCreds()) {
     if (constEq(candidate, cred.email) && constEq(password, cred.password)) ok = true;
   }
   return ok;
 }
 
-// `email` identifies which admin is logged in — it's the per-admin key for
-// viewed-state tracking. Required: tokens minted before multi-admin support
-// lack it and must fail verification so those admins are forced to re-login.
-export interface SessionJwt { role: 'admin'; orgId: string; email: string; }
+export interface AuthenticatedAdmin {
+  userId: string;
+  email: string;
+  name: string;
+  userRole: 'owner' | 'member';
+}
 
-export async function signSessionJwt(p: { orgId: string; email: string }): Promise<string> {
-  return new SignJWT({ role: 'admin', orgId: p.orgId, email: p.email })
+/** Display name fallback when all we have is an email. */
+export function nameFromEmail(email: string): string {
+  const local = email.split('@')[0] || email;
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
+
+/**
+ * DB-backed login. The admin_users table is the source of truth; the env
+ * credentials stay honored for one release as a fallback (and lazily
+ * create the missing row so the next login is pure-DB). Returns null on
+ * any failure — callers never learn which check failed.
+ */
+export async function authenticateAdmin(email: string, password: string): Promise<AuthenticatedAdmin | null> {
+  const candidate = email.toLowerCase().trim();
+  const { db, schema } = await import('@/lib/db');
+  const { eq, count } = await import('drizzle-orm');
+
+  const [row] = await db.select().from(schema.adminUsers)
+    .where(eq(schema.adminUsers.email, candidate)).limit(1);
+
+  if (row) {
+    if (!row.active) return null;
+    const ok = await bcrypt.compare(password, row.passwordHash);
+    if (!ok) return null;
+    await db.update(schema.adminUsers)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(schema.adminUsers.id, row.id));
+    return { userId: row.id, email: row.email, name: row.name, userRole: row.role === 'owner' ? 'owner' : 'member' };
+  }
+
+  // Fallback: env credentials for an email with no DB row yet (e.g. the
+  // seed hasn't run, or ADMINS_CREDS gained an entry post-boot). On
+  // success, materialize the row so the DB takes over from here on.
+  if (!checkAdminCredentials(candidate, password)) return null;
+  const [org] = await db.select().from(schema.organizations).limit(1);
+  if (!org) return null;
+  const [{ value: existing }] = await db.select({ value: count() }).from(schema.adminUsers);
+  const [created] = await db.insert(schema.adminUsers).values({
+    orgId: org.id,
+    email: candidate,
+    name: nameFromEmail(candidate),
+    passwordHash: await bcrypt.hash(password, 10),
+    // First account ever becomes the owner; later env stragglers join as members.
+    role: existing === 0 ? 'owner' : 'member',
+    lastLoginAt: new Date(),
+  }).onConflictDoNothing().returning();
+  if (!created) return null;
+  return { userId: created.id, email: created.email, name: created.name, userRole: created.role === 'owner' ? 'owner' : 'member' };
+}
+
+// The session token identifies the admin three ways: `email` keys
+// viewed-state tracking (predates the users table), `userId` keys
+// Researcher threads, `userRole` gates Team mutations. All are required:
+// tokens minted before users management lack them and must fail
+// verification so those admins re-login and get the full payload.
+export interface SessionJwt {
+  role: 'admin';
+  orgId: string;
+  email: string;
+  userId: string;
+  name: string;
+  userRole: 'owner' | 'member';
+}
+
+export async function signSessionJwt(p: { orgId: string; email: string; userId: string; name: string; userRole: 'owner' | 'member' }): Promise<string> {
+  return new SignJWT({ role: 'admin', orgId: p.orgId, email: p.email, userId: p.userId, name: p.name, userRole: p.userRole })
     .setProtectedHeader({ alg: ALG })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_DAYS}d`)
@@ -73,11 +141,22 @@ export async function verifySessionJwt(token: string): Promise<SessionJwt> {
     payload.role !== 'admin' ||
     typeof payload.orgId !== 'string' ||
     typeof payload.email !== 'string' ||
-    payload.email === ''
+    payload.email === '' ||
+    typeof payload.userId !== 'string' ||
+    payload.userId === '' ||
+    typeof payload.name !== 'string' ||
+    (payload.userRole !== 'owner' && payload.userRole !== 'member')
   ) {
     throw new Error('invalid session payload');
   }
-  return { role: 'admin', orgId: payload.orgId, email: payload.email };
+  return {
+    role: 'admin',
+    orgId: payload.orgId,
+    email: payload.email,
+    userId: payload.userId,
+    name: payload.name,
+    userRole: payload.userRole,
+  };
 }
 
 export async function setSessionCookie(token: string) {

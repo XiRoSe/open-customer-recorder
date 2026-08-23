@@ -1,10 +1,11 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
-  const { ensureSingletonOrg, cleanupZeroEventSessions } = await import('./lib/bootstrap');
+  const { ensureSingletonOrg, ensureAdminUsers, cleanupZeroEventSessions } = await import('./lib/bootstrap');
   const { runRetentionOnce } = await import('./lib/retention');
 
   // Boot tasks: ensure org exists, prune broken sessions, run retention once
   await ensureSingletonOrg().catch((e) => console.warn('[bootstrap] failed', e));
+  await ensureAdminUsers().catch((e) => console.warn('[bootstrap] admin seed failed', e));
   await cleanupZeroEventSessions().catch((e) => console.warn('[cleanup] failed', e));
   await runRetentionOnce().catch((e) => console.warn('[retention] boot run failed', e));
 

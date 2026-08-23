@@ -33,7 +33,7 @@ async function seed() {
     sessionId: s.id, digest: {}, digestVersion: 1, narrative: '0:00 Landed on /', insights: [],
     intentText: 'Browsed.', status: 'done', attempts: 3,
   });
-  const token = await signSessionJwt({ orgId: org.id, email: 'admin@example.com' });
+  const token = await signSessionJwt({ orgId: org.id, email: 'admin@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
   return { s, token };
 }
 

@@ -55,17 +55,30 @@ describe('auth', () => {
     });
   });
 
-  it('signs and verifies a session JWT, round-tripping the admin email', async () => {
-    const t = await signSessionJwt({ orgId: 'o-1', email: 'admin1@example.com' });
+  it('signs and verifies a session JWT, round-tripping the admin identity', async () => {
+    const t = await signSessionJwt({ orgId: 'o-1', email: 'admin1@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
     const p = await verifySessionJwt(t);
     expect(p.orgId).toBe('o-1');
     expect(p.role).toBe('admin');
     expect(p.email).toBe('admin1@example.com');
+    expect(p.userId).toBe('u-1');
+    expect(p.name).toBe('Admin');
+    expect(p.userRole).toBe('owner');
   });
 
   it('rejects a token with no email claim (forces re-login for legacy cookies)', async () => {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET);
     const legacy = await new SignJWT({ role: 'admin', orgId: 'o-1' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(secret);
+    await expect(verifySessionJwt(legacy)).rejects.toThrow();
+  });
+
+  it('rejects a pre-users-management token missing userId (forces re-login)', async () => {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+    const legacy = await new SignJWT({ role: 'admin', orgId: 'o-1', email: 'admin1@example.com' })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('7d')
