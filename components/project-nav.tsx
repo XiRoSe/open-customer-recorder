@@ -22,7 +22,7 @@ export function ProjectNav() {
   if (!m) return null;
   const [, id, active] = m;
   return (
-    <nav className="flex gap-2 text-sm items-baseline flex-wrap justify-end">
+    <nav className="flex gap-2 text-sm items-baseline whitespace-nowrap">
       {TABS.map(([key, label], i) => (
         <span key={key} className="flex gap-2 items-baseline">
           {i > 0 && <span className="text-muted-foreground" aria-hidden>·</span>}

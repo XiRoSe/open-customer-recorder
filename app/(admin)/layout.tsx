@@ -9,16 +9,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Strategy: just render children; protected pages check themselves via readSessionCookie + redirect.
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b px-4 py-3 flex items-center justify-between">
+      <header className="relative border-b px-4 py-3 flex items-center justify-between">
         <Link href="/projects" className="font-semibold">Open Customer Recorder</Link>
-        <div className="flex items-center gap-6">
+        {/* centered independently of the flanks' widths */}
+        <div className="absolute left-1/2 -translate-x-1/2">
           <ProjectNav />
-          {session && (
-            <form action="/api/admin/auth/logout" method="post">
-              <button className="text-sm text-muted-foreground hover:underline">Log out</button>
-            </form>
-          )}
         </div>
+        {session && (
+          <form action="/api/admin/auth/logout" method="post">
+            <button className="text-sm text-muted-foreground hover:underline cursor-pointer">Log out</button>
+          </form>
+        )}
       </header>
       <div className="flex-1">{children}</div>
     </div>
