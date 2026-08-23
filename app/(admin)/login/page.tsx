@@ -1,13 +1,11 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 
 export default function LoginPage() {
-  const r = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -21,7 +19,10 @@ export default function LoginPage() {
       body: JSON.stringify({ email, password }),
     });
     setBusy(false);
-    if (res.ok) r.push('/projects');
+    // Hard navigation: the (admin) layout reads the session server-side,
+    // and a client-side push would keep rendering its logged-out shell
+    // (no Log out button, no Researcher) until a manual reload.
+    if (res.ok) window.location.assign('/projects');
     else setErr((await res.json()).error || 'login failed');
   }
 
