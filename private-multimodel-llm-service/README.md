@@ -1,4 +1,4 @@
-# Summarizer service
+﻿# private-multimodel-llm-service
 
 llama.cpp serving Qwen3.5-4B (Q4_K_M) with an OpenAI-compatible API.
 Turns session digests into 2-3 sentence intent summaries.
@@ -11,10 +11,10 @@ Turns session digests into 2-3 sentence intent summaries.
    in one burst per cycle; you pay only for active minutes.
 4. Resources: ~4 GB RAM, 2+ vCPU. Expect 15-30 s per summary.
 5. On the main app service set:
-   - `SUMMARIZER_URL=http://summarizer.railway.internal:8080`
+   - `LLM_SERVICE_URL=http://summarizer.railway.internal:8080`
    - `SUMMARIZER_MODEL_LABEL=qwen3.5-4b-q4km`
 
-Unset `SUMMARIZER_URL` to turn the LLM layer off — narratives and insight
+Unset `LLM_SERVICE_URL` to turn the LLM layer off — narratives and insight
 badges keep working without it.
 
 ## Local smoke test

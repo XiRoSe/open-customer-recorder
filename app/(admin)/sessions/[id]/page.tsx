@@ -72,7 +72,7 @@ export default async function SessionReplayPage(props: { params: Promise<{ id: s
           insights: summaryRow.insights as Insight[],
           steps: ((summaryRow.digest as { steps?: Step[] } | null)?.steps ?? []),
         } : null}
-        llmEnabled={Boolean(process.env.SUMMARIZER_URL)}
+        llmEnabled={Boolean(process.env.LLM_SERVICE_URL || process.env.SUMMARIZER_URL)}
         details={[
           ...(s.pageUrl ? [{ label: 'Entry page', value: s.pageUrl }] : []),
           { label: 'Source', value: s.referrer || 'Direct / unknown' },

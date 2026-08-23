@@ -4,6 +4,7 @@ import { db, schema } from '@/lib/db';
 import { sql, count, avg, sum, gt, and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { getAppSettings } from '@/lib/app-settings';
+import { infraStats } from '@/lib/infra-stats';
 import { SettingsToggles } from '@/components/settings-toggles';
 import { Card } from '@/components/ui/card';
 
@@ -36,6 +37,7 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
   if (!project) redirect('/projects');
 
   const settings = await getAppSettings(session.orgId);
+  const infra = await infraStats();
 
   const [[totals], [last24h], [summaryStats], insightRows] = await Promise.all([
     db.select({
@@ -121,6 +123,52 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           </Card>
         </div>
       )}
+
+      <div>
+        <h2 className="font-semibold mb-2">Infra</h2>
+        <p className="text-sm text-muted-foreground mb-2">
+          Early-warning gauges: watch these before users feel anything.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <Card className="p-4" title="AI analysis waiting to run. Growing steadily means the LLM service is falling behind the traffic.">
+            <div className="text-2xl font-semibold tabular-nums">{infra.summaries.pending + infra.summaries.processing}</div>
+            <div className="text-sm text-muted-foreground">Summary backlog</div>
+            {infra.summaries.failed > 0 && <div className="text-xs text-rose-600 mt-1">{infra.summaries.failed} failed</div>}
+          </Card>
+          <Card className="p-4" title="Median time from session capture to finished AI summary, last 24 hours.">
+            <div className="text-2xl font-semibold tabular-nums">{infra.medianLatencyMs === null ? '—' : fmtDuration(infra.medianLatencyMs)}</div>
+            <div className="text-sm text-muted-foreground">Median summary latency</div>
+          </Card>
+          <Card className="p-4" title="Total Postgres size — replay blobs are the main consumer; retention keeps this bounded.">
+            <div className="text-2xl font-semibold tabular-nums">{fmtBytes(infra.dbBytes)}</div>
+            <div className="text-sm text-muted-foreground">Database size</div>
+            <div className="text-xs text-muted-foreground mt-1">{fmtBytes(infra.blobBytes)} replay blobs</div>
+          </Card>
+          <Card className="p-4" title="Redis-backed job queues (BullMQ). Off means the built-in in-process loops are running instead.">
+            <div className="text-2xl font-semibold">{infra.queuesEnabled ? (infra.queues ? 'on' : 'error') : 'off'}</div>
+            <div className="text-sm text-muted-foreground">Job queues (Redis)</div>
+            {infra.queues && (
+              <div className="text-xs text-muted-foreground mt-1 tabular-nums">
+                {(Object.entries(infra.queues) as [string, { waiting: number; active: number; failed: number }][])
+                  .map(([n, c]) => `${n} ${c.waiting + c.active}`).join(' · ')}
+              </div>
+            )}
+          </Card>
+          <Card className="p-4" title="Pre-aggregated hourly timeline rollups. The freshest hour should track the current hour once backfill completes.">
+            <div className="text-2xl font-semibold tabular-nums">{infra.rollups.count.toLocaleString()}</div>
+            <div className="text-sm text-muted-foreground">Timeline rollup hours</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {infra.rollups.freshestHour
+                ? `fresh to ${infra.rollups.freshestHour.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC`
+                : 'not built yet'}
+            </div>
+          </Card>
+          <Card className="p-4" title="Whether the private multimodel LLM service is configured (LLM_SERVICE_URL).">
+            <div className="text-2xl font-semibold">{infra.llmConfigured ? 'connected' : 'not set'}</div>
+            <div className="text-sm text-muted-foreground">LLM service</div>
+          </Card>
+        </div>
+      </div>
     </main>
   );
 }

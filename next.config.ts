@@ -7,7 +7,8 @@ const nextConfig: NextConfig = {
   // ships an incomplete copy. Same for @huggingface/transformers, whose
   // onnxruntime-node dependency carries native binaries. Mark them
   // external so they're required from node_modules at runtime.
-  serverExternalPackages: ['playwright-core', '@huggingface/transformers'],
+  // bullmq/ioredis ship runtime-loaded Lua scripts the tracer misses.
+  serverExternalPackages: ['playwright-core', '@huggingface/transformers', 'bullmq', 'ioredis'],
   async headers() {
     return [
       {

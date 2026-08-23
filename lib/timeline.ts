@@ -6,6 +6,7 @@
 import { sql, and, eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
+import { llmBaseUrl } from './llm-service';
 import { categorizeSource, SOURCE_CATEGORIES, SOURCE_META, type SourceCategory } from './traffic-source';
 
 export const TIMELINE_RANGES: Record<string, { windowMs: number; bucketMs: number; label: string }> = {
@@ -303,8 +304,9 @@ export async function timelineForProject(projectId: string, rangeKey: string): P
 }
 
 /** Timeline data plus the fetched rows, for consumers (the Overview)
- * that derive extra aggregates without a second query. */
-export async function timelineBundleForProject(projectId: string, rangeKey: string): Promise<{ data: TimelineData; rows: TimelineSessionRow[] }> {
+ * that derive extra aggregates without a second query. fromRollups
+ * marks that rows are empty because pre-aggregation served the window. */
+export async function timelineBundleForProject(projectId: string, rangeKey: string): Promise<{ data: TimelineData; rows: TimelineSessionRow[]; fromRollups: boolean }> {
   const windowEnd = Date.now();
   if (rangeKey === 'all') {
     // Sessions carry client-supplied clocks, and one skewed timestamp
@@ -322,13 +324,19 @@ export async function timelineBundleForProject(projectId: string, rangeKey: stri
     const start = rows0[0]?.min ? new Date(rows0[0].min).getTime() : windowEnd - 86_400_000;
     const windowMs = Math.max(86_400_000, windowEnd - start);
     const bucketMs = windowMs <= 2 * 86_400_000 ? 3600_000 : windowMs <= 90 * 86_400_000 ? 86_400_000 : 7 * 86_400_000;
+    // The unbounded range prefers pre-aggregated hourly rollups; a
+    // coverage gap (rollups still backfilling) falls back to raw rows.
+    const { timelineFromRollups } = await import('./rollups');
+    const rolled = await timelineFromRollups(projectId, windowEnd - windowMs, windowEnd, bucketMs)
+      .catch((e) => { console.warn('[timeline] rollup read failed, falling back to raw', e); return null; });
+    if (rolled) return { data: rolled, rows: [], fromRollups: true };
     // +bucketMs: bucket alignment can pull the window start earlier.
     const rows = await timelineRowsForProject(projectId, windowEnd, windowMs + bucketMs);
-    return { data: buildTimeline(rows, windowEnd, windowMs, bucketMs, false), rows };
+    return { data: buildTimeline(rows, windowEnd, windowMs, bucketMs, false), rows, fromRollups: false };
   }
   const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
   const rows = await timelineRowsForProject(projectId, windowEnd, range.windowMs + range.bucketMs);
-  return { data: buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs), rows };
+  return { data: buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs), rows, fromRollups: false };
 }
 
 export interface TimelinePatterns { peaks: string; quiet: string; opportunity: string; watch: string }
@@ -426,7 +434,7 @@ const ANALYSIS_STALE_MS = 6 * 3600_000;
 
 /** Background: refresh the cached analyst read per project + range. */
 export async function refreshTimelineAnalyses(fetchFn: typeof fetch = fetch): Promise<number> {
-  const baseUrl = process.env.SUMMARIZER_URL;
+  const baseUrl = llmBaseUrl();
   if (!baseUrl) return 0;
   const settings = await getAppSettings();
   if (!settings.intentEnabled) return 0;

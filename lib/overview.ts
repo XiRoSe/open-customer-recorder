@@ -148,7 +148,7 @@ export async function overviewForProject(projectId: string, rangeKey: string): P
   const key = TIMELINE_RANGES[rangeKey] ? rangeKey : '7d';
   const base = `/projects/${projectId}`;
 
-  const [{ data, rows }, { analysis, patterns }, allDims] = await Promise.all([
+  const [{ data, rows, fromRollups }, { analysis, patterns }, allDims] = await Promise.all([
     timelineBundleForProject(projectId, key),
     timelineAnalysis(projectId, key),
     clustersDataForProject(projectId),
@@ -201,7 +201,9 @@ export async function overviewForProject(projectId: string, rangeKey: string): P
     frustrated: r.frustrated,
   }));
 
-  const friction = worstFrictionEntry(rows, data.windowStart, data.windowEnd);
+  const friction = fromRollups
+    ? await (await import('./rollups')).frictionEntryFromRollups(projectId, data.windowStart, data.windowEnd)
+    : worstFrictionEntry(rows, data.windowStart, data.windowEnd);
   const attention = attentionItems(
     data, `${base}/sessions`, `${base}/timeline`, `${base}/clusters`,
     key, friction, segments[0] ?? null,

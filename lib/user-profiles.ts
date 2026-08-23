@@ -5,6 +5,7 @@
 import { sql, inArray, and, eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
+import { llmBaseUrl } from './llm-service';
 
 export const PROFILE_MIN_SESSIONS = 2;   // 1 session would just parrot its summary
 export const PROFILE_MAX_INPUT = 15;     // newest summaries fed to the model
@@ -112,22 +113,23 @@ async function buildProfileInput(projectId: string, visitorKey: string): Promise
   return `${header}\n${lines.join('\n')}`;
 }
 
-/** Drain due pending profile rows. Text-only LLM calls — no frames. */
-export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<number> {
-  const baseUrl = process.env.SUMMARIZER_URL;
-  if (!baseUrl) return 0;
+/** Claim and process exactly one due pending profile. 'empty' = drained;
+ * 'error' = transient failure (row got backoff, caller should pause).
+ * Called by the legacy drain loop AND BullMQ workers. */
+export async function processNextProfile(fetchFn: typeof fetch = fetch): Promise<'done' | 'skip' | 'empty' | 'error' | 'disabled'> {
+  const baseUrl = llmBaseUrl();
+  if (!baseUrl) return 'disabled';
   const settings = await getAppSettings();
-  if (!settings.profilesEnabled || !settings.intentEnabled) return 0;
-  let done = 0;
-  for (;;) {
-    const row = await claimOne();
-    if (!row) break;
+  if (!settings.profilesEnabled || !settings.intentEnabled) return 'disabled';
+  const row = await claimOne();
+  if (!row) return 'empty';
+  {
     try {
       const input = await buildProfileInput(row.project_id, row.visitor_key);
       if (!input) {
         // Below threshold (e.g. summaries were deleted) — drop the row.
         await db.execute(sql`DELETE FROM ${schema.userProfiles} WHERE id = ${row.id}`);
-        continue;
+        return 'skip';
       }
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
@@ -161,7 +163,7 @@ export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<
             facets = ${facets ? JSON.stringify(facets) : null}::jsonb, updated_at = now()
         WHERE id = ${row.id}
       `);
-      done++;
+      return 'done';
     } catch (e) {
       const attempts = row.attempts + 1;
       const failed = attempts >= MAX_ATTEMPTS;
@@ -173,11 +175,34 @@ export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<
         WHERE id = ${row.id}
       `);
       console.warn('[user-profiles] attempt failed', row.id, e instanceof Error ? e.message : e);
-      if (failed) continue;
-      break;
+      return failed ? 'skip' : 'error';
     }
   }
+}
+
+/** Drain due pending profile rows. Text-only LLM calls — no frames. */
+export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<number> {
+  let done = 0;
+  for (;;) {
+    const r = await processNextProfile(fetchFn);
+    if (r === 'done') { done++; continue; }
+    if (r === 'skip') continue;
+    break;
+  }
   return done;
+}
+
+/** Due pending profiles with age, for the queue reconciler. */
+export async function duePendingProfiles(limit = 200): Promise<{ id: string; ageMinutes: number }[]> {
+  const res = await db.execute<{ id: string; age_minutes: number }>(sql`
+    SELECT id, EXTRACT(EPOCH FROM (now() - updated_at))::int / 60 AS age_minutes
+    FROM ${schema.userProfiles}
+    WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at < now())
+    ORDER BY updated_at DESC
+    LIMIT ${limit}
+  `);
+  const rows = Array.isArray(res) ? res : (res as unknown as { rows: { id: string; age_minutes: number }[] }).rows ?? [];
+  return rows.map((r) => ({ id: r.id, ageMinutes: Number(r.age_minutes) }));
 }
 
 export interface VisitorProfile { profileText: string | null; status: string; sessionsSummarized: number; segmentId: string | null }

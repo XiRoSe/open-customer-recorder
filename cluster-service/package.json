@@ -1,0 +1,17 @@
+{
+  "name": "cluster-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx worker.ts"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "bullmq": "^6.2.0",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^6.0.0",
+    "ml-kmeans": "^7.0.1",
+    "postgres": "^3.4.9",
+    "tsx": "^4.20.3"
+  }
+}

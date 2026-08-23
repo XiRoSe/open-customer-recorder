@@ -10,6 +10,7 @@ import { kmeans } from 'ml-kmeans';
 import { sql, and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
+import { llmBaseUrl } from './llm-service';
 import { embedTexts, type EmbedFn } from './embeddings';
 import { pca2d } from './pca';
 import type { ProfileFacets } from './user-profiles';
@@ -158,7 +159,7 @@ export function representatives(vectors: number[][], result: ClusterResult, perC
 // --- LLM: segment naming + dimension analysis --------------------------------
 
 async function llmCall(system: string, user: string, fetchFn: typeof fetch, maxTokens: number): Promise<string | null> {
-  const baseUrl = process.env.SUMMARIZER_URL;
+  const baseUrl = llmBaseUrl();
   if (!baseUrl) return null;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), NAME_TIMEOUT_MS);

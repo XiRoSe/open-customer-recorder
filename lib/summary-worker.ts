@@ -3,6 +3,7 @@ import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
 import { pickFrameMoments, renderSessionFrames } from './session-frames';
 import { compactDigest, type SessionDigest } from './session-digest';
+import { llmBaseUrl, llmModelLabel } from './llm-service';
 import { gunzipSync } from 'node:zlib';
 import { eq } from 'drizzle-orm';
 
@@ -84,57 +85,82 @@ async function framesFor(sessionId: string, digest: SessionDigest, render: Frame
   }
 }
 
-/** Drain all due pending rows sequentially (keeps the sleeping summarizer
+/** Claim and process exactly one due pending row. 'empty' = queue is
+ * drained; 'error' = transient failure (row got backoff, caller should
+ * pause the burst). Called by the legacy drain loop AND BullMQ workers. */
+export async function processNextSummary(
+  fetchFn: typeof fetch = fetch,
+  frameRenderer: FrameRenderer = renderSessionFrames,
+): Promise<'done' | 'skip' | 'empty' | 'error' | 'disabled'> {
+  const baseUrl = llmBaseUrl();
+  if (!baseUrl) return 'disabled';
+  const settings = await getAppSettings();
+  if (!settings.intentEnabled) return 'disabled';
+  const row = await claimOne();
+  if (!row) return 'empty';
+  try {
+    const content: ContentPart[] = [{ type: 'text', text: compactDigest(row.digest) }];
+    let visualUsed = false;
+    if (settings.visualEnabled) {
+      const frames = await framesFor(row.session_id, row.digest as SessionDigest, frameRenderer);
+      for (const b64 of frames) {
+        content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } });
+      }
+      visualUsed = frames.length > 0;
+    }
+    const intentText = await callSummarizer(baseUrl, content, fetchFn);
+    await db.execute(sql`
+      UPDATE ${schema.sessionSummaries}
+      SET status = 'done', intent_text = ${intentText}, model = ${llmModelLabel()},
+          visual_used = ${visualUsed}, updated_at = now()
+      WHERE id = ${row.id}
+    `);
+    return 'done';
+  } catch (e) {
+    const attempts = row.attempts + 1;
+    const failed = attempts >= MAX_ATTEMPTS;
+    // Exponential backoff: 2, 4, 8 minutes.
+    const retryAt = failed ? null : new Date(Date.now() + 2 ** attempts * 60_000).toISOString();
+    await db.execute(sql`
+      UPDATE ${schema.sessionSummaries}
+      SET status = ${failed ? 'failed' : 'pending'}, attempts = ${attempts},
+          next_retry_at = ${retryAt}::timestamptz,
+          updated_at = now()
+      WHERE id = ${row.id}
+    `);
+    console.warn('[summary-worker] attempt failed', row.id, e instanceof Error ? e.message : e);
+    return failed ? 'skip' : 'error'; // terminal failure doesn't pause the burst
+  }
+}
+
+/** Drain all due pending rows sequentially (keeps the sleeping LLM
  * service awake for one burst). Returns rows completed successfully. */
 export async function drainSummaryQueue(
   fetchFn: typeof fetch = fetch,
   frameRenderer: FrameRenderer = renderSessionFrames,
 ): Promise<number> {
-  const baseUrl = process.env.SUMMARIZER_URL;
-  if (!baseUrl) return 0;
-  const settings = await getAppSettings();
-  if (!settings.intentEnabled) return 0;
-  const modelLabel = process.env.SUMMARIZER_MODEL_LABEL || 'unknown';
   let done = 0;
   for (;;) {
-    const row = await claimOne();
-    if (!row) break;
-    try {
-      const content: ContentPart[] = [{ type: 'text', text: compactDigest(row.digest) }];
-      let visualUsed = false;
-      if (settings.visualEnabled) {
-        const frames = await framesFor(row.session_id, row.digest as SessionDigest, frameRenderer);
-        for (const b64 of frames) {
-          content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } });
-        }
-        visualUsed = frames.length > 0;
-      }
-      const intentText = await callSummarizer(baseUrl, content, fetchFn);
-      await db.execute(sql`
-        UPDATE ${schema.sessionSummaries}
-        SET status = 'done', intent_text = ${intentText}, model = ${modelLabel},
-            visual_used = ${visualUsed}, updated_at = now()
-        WHERE id = ${row.id}
-      `);
-      done++;
-    } catch (e) {
-      const attempts = row.attempts + 1;
-      const failed = attempts >= MAX_ATTEMPTS;
-      // Exponential backoff: 2, 4, 8 minutes.
-      const retryAt = failed ? null : new Date(Date.now() + 2 ** attempts * 60_000).toISOString();
-      await db.execute(sql`
-        UPDATE ${schema.sessionSummaries}
-        SET status = ${failed ? 'failed' : 'pending'}, attempts = ${attempts},
-            next_retry_at = ${retryAt}::timestamptz,
-            updated_at = now()
-        WHERE id = ${row.id}
-      `);
-      console.warn('[summary-worker] attempt failed', row.id, e instanceof Error ? e.message : e);
-      if (failed) continue;
-      break; // transient failure — stop the burst, retry next cycle
-    }
+    const r = await processNextSummary(fetchFn, frameRenderer);
+    if (r === 'done') { done++; continue; }
+    if (r === 'skip') continue;
+    break; // empty, disabled, or transient error — stop the burst
   }
   return done;
+}
+
+/** How many due pending rows exist, with age — the queue reconciler
+ * turns these into deduped job signals. */
+export async function duePendingSummaries(limit = 500): Promise<{ id: string; ageMinutes: number }[]> {
+  const res = await db.execute<{ id: string; age_minutes: number }>(sql`
+    SELECT id, EXTRACT(EPOCH FROM (now() - created_at))::int / 60 AS age_minutes
+    FROM ${schema.sessionSummaries}
+    WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at < now())
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `);
+  const rows = Array.isArray(res) ? res : (res as unknown as { rows: { id: string; age_minutes: number }[] }).rows ?? [];
+  return rows.map((r) => ({ id: r.id, ageMinutes: Number(r.age_minutes) }));
 }
 
 /** Crash recovery: a worker that died mid-call leaves a 'processing' row.

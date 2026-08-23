@@ -239,6 +239,42 @@ export const dimensionAnalyses = pgTable('dimension_analyses', {
   projectDimIdx: uniqueIndex('dimension_analyses_project_dim_idx').on(t.projectId, t.dimension),
 }));
 
+// Pre-aggregated hourly session metrics per project, built by queued,
+// idempotent jobs (recompute-the-hour from raw rows). The unbounded
+// 'all' timeline range reads these instead of scanning every session;
+// hot ranges (24h/7d/30d) stay raw for exactness. A zero-session hour
+// still gets a row — that's how read-side coverage is proven.
+export const timelineRollups = pgTable('timeline_rollups', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  hourStart: timestamp('hour_start', { withTimezone: true }).notNull(),
+  sessions: integer('sessions').notNull().default(0),
+  engaged: integer('engaged').notNull().default(0),
+  engagedNew: integer('engaged_new').notNull().default(0),
+  frustrated: integer('frustrated').notNull().default(0),
+  // Sessions that are their visitor's first ever — summing these over a
+  // window that starts at the project's first session equals distinct
+  // new visitors in that window.
+  newVisitorSessions: integer('new_visitor_sessions').notNull().default(0),
+  durationSumMs: bigint('duration_sum_ms', { mode: 'number' }).notNull().default(0),
+  clicks: integer('clicks').notNull().default(0),
+  tagged: integer('tagged').notNull().default(0),
+  bySource: jsonb('by_source').notNull().default({}),
+  clicksByDevice: jsonb('clicks_by_device').notNull().default({}),
+  frictionByKind: jsonb('friction_by_kind').notNull().default({}),
+  byTag: jsonb('by_tag').notNull().default({}),
+  byDevice: jsonb('by_device').notNull().default({}),
+  byBrowser: jsonb('by_browser').notNull().default({}),
+  byCountry: jsonb('by_country').notNull().default({}),
+  byReferrerHost: jsonb('by_referrer_host').notNull().default({}),
+  byEntryPath: jsonb('by_entry_path').notNull().default({}),
+  // {path: {n, bad}} — powers the Overview's worst-friction-entry callout.
+  byEntryFriction: jsonb('by_entry_friction').notNull().default({}),
+  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  projectHourIdx: uniqueIndex('timeline_rollups_project_hour_idx').on(t.projectId, t.hourStart),
+}));
+
 // Cached analyst read of the timeline window per range (24h / 7d / 30d),
 // refreshed by a background cycle — never generated at page-view time.
 export const timelineAnalyses = pgTable('timeline_analyses', {
