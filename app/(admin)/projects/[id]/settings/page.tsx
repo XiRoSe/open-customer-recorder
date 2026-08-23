@@ -6,6 +6,7 @@ import { readSessionCookie } from '@/lib/auth';
 import { getAppSettings } from '@/lib/app-settings';
 import { infraStats } from '@/lib/infra-stats';
 import { SettingsToggles } from '@/components/settings-toggles';
+import { DataSettings } from '@/components/data-settings';
 import { Card } from '@/components/ui/card';
 import { HeaderRule } from '@/components/header-rule';
 
@@ -85,6 +86,18 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
       <HeaderRule />
 
       <SettingsToggles initial={settings} />
+
+      <div>
+        <h2 className="font-semibold mb-2">Data &amp; recording</h2>
+        <p className="text-sm text-muted-foreground mb-2">
+          Replays age out with retention; timeline history, profiles, and segments are kept.
+        </p>
+        <DataSettings
+          projectId={project.id}
+          initialRetentionDays={project.retentionDays}
+          initialMaxSessionMinutes={project.maxSessionMinutes}
+        />
+      </div>
 
       <div>
         <h2 className="font-semibold mb-2">General stats</h2>

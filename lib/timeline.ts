@@ -131,7 +131,10 @@ function windowStats(rows: TimelineSessionRow[], start: number, end: number): Ti
     if ((r.durationMs ?? 0) >= ENGAGED_MS) engaged++;
     if (r.frustrated) frustrated++;
     durSum += r.durationMs ?? 0;
-    if (r.firstSeenAt.getTime() >= start) { newVisitors.add(r.visitorKey); newSessions++; }
+    // First-ever semantics, everywhere: a session is "new" only when it
+    // is literally the visitor's first — the same-week return counts as
+    // returning. One definition across all ranges and the rollups.
+    if (r.firstSeenAt.getTime() === r.startedAt.getTime()) { newVisitors.add(r.visitorKey); newSessions++; }
     for (const k of r.insightKinds ?? []) insightCounts[k] = (insightCounts[k] ?? 0) + 1;
     bump(byDevice, deviceOf(r.userAgent));
     bump(byBrowser, r.browser);
@@ -189,7 +192,7 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
       b.clicksByDevice[dev] = (b.clicksByDevice[dev] ?? 0) + r.clicks;
     }
     if ((r.durationMs ?? 0) >= ENGAGED_MS) {
-      b.engagedByVisitor[r.firstSeenAt.getTime() >= windowStart ? 'new' : 'returning']++;
+      b.engagedByVisitor[r.firstSeenAt.getTime() === r.startedAt.getTime() ? 'new' : 'returning']++;
     }
     if (r.frustrated) b.frustrated++;
     for (const k of r.insightKinds ?? []) b.frictionByKind[k] = (b.frictionByKind[k] ?? 0) + 1;
@@ -212,25 +215,34 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
   }
 
   const cur = windowStats(rows, windowStart, windowEnd);
-  const prev = windowStats(rows, prevStart, windowStart);
+  const prev = comparePrevious ? windowStats(rows, prevStart, windowStart) : null;
+  const trends = trendChips(cur, prev);
 
+  return { buckets, totals: cur, trends, windowStart, windowEnd, bucketMs, tagMeta };
+}
+
+/** The trend chips, from current-window totals and (optionally) the
+ * previous equal window's. Shared by the raw path and the rollup path
+ * so both ranges speak the same language. */
+export function trendChips(cur: TimelineTotals, prev: TimelineTotals | null): TrendChip[] {
+  const comparePrevious = prev !== null;
   const trends: TrendChip[] = [];
-  if (comparePrevious) {
+  if (prev) {
     const sessionsDelta = fmtDelta(cur.sessions, prev.sessions);
     trends.push({ label: 'Sessions', value: `${cur.sessions} (${sessionsDelta.value})`, direction: sessionsDelta.direction });
   } else {
     trends.push({ label: 'Sessions', value: `${cur.sessions}`, direction: 'flat' });
   }
   const engRate = pct(cur.engaged, cur.sessions);
-  const engPrev = pct(prev.engaged, prev.sessions);
+  const engPrev = prev ? pct(prev.engaged, prev.sessions) : 0;
   trends.push({ label: 'Engaged (30s+)', value: `${Math.round(engRate)}%`, direction: comparePrevious && engRate > engPrev + 2 ? 'up' : comparePrevious && engRate < engPrev - 2 ? 'down' : 'flat' });
   const fruRate = pct(cur.frustrated, cur.sessions);
-  const fruPrev = pct(prev.frustrated, prev.sessions);
+  const fruPrev = prev ? pct(prev.frustrated, prev.sessions) : 0;
   trends.push({ label: 'Frustration', value: `${Math.round(fruRate)}%`, direction: comparePrevious && fruRate > fruPrev + 2 ? 'up' : comparePrevious && fruRate < fruPrev - 2 ? 'down' : 'flat' });
   // Share of *sessions* from first-time visitors — matches the
   // new-vs-returning split, not the distinct-visitor count.
   trends.push({ label: 'New visitors', value: `${Math.round(pct(cur.newSessions, Math.max(1, cur.sessions)))}%`, direction: 'flat' });
-  if (comparePrevious) {
+  if (prev) {
     // Emerging source: biggest share-point gain vs the previous window.
     let emerging: { s: SourceCategory; gain: number } | null = null;
     for (const s of SOURCE_CATEGORIES) {
@@ -241,8 +253,7 @@ export function buildTimeline(rows: TimelineSessionRow[], windowEnd: number, win
       trends.push({ label: 'Emerging source', value: `${SOURCE_META[emerging.s].label} +${Math.round(emerging.gain)}pts`, direction: 'up' });
     }
   }
-
-  return { buckets, totals: cur, trends, windowStart, windowEnd, bucketMs, tagMeta };
+  return trends;
 }
 
 /** Fetch rows covering current + previous window in one query. */
@@ -314,12 +325,17 @@ export async function timelineBundleForProject(projectId: string, rangeKey: stri
     // (seen: 1978) would otherwise stretch "all time" across decades of
     // empty buckets — so the earliest session that predates the project
     // itself can't anchor the window.
+    // Anchor: the earliest surviving raw session OR the earliest rollup
+    // hour — rollup history outlives retention ("insights outlive raw
+    // data"), so the all-time view keeps reaching pruned months.
     interface MinRow extends Record<string, unknown> { min: string | null }
     const res = await db.execute<MinRow>(sql`
-      SELECT min(s.started_at) AS min
-      FROM ${schema.sessions} s
-      WHERE s.project_id = ${projectId} AND s.event_count > 0
-        AND s.started_at >= (SELECT p.created_at FROM ${schema.projects} p WHERE p.id = ${projectId})
+      SELECT least(
+        (SELECT min(s.started_at) FROM ${schema.sessions} s
+         WHERE s.project_id = ${projectId} AND s.event_count > 0
+           AND s.started_at >= (SELECT p.created_at FROM ${schema.projects} p WHERE p.id = ${projectId})),
+        (SELECT min(r.hour_start) FROM ${schema.timelineRollups} r WHERE r.project_id = ${projectId})
+      ) AS min
     `);
     const rows0: MinRow[] = Array.isArray(res) ? res : (res as unknown as { rows: MinRow[] }).rows ?? [];
     const start = rows0[0]?.min ? new Date(rows0[0].min).getTime() : windowEnd - 86_400_000;
@@ -336,6 +352,15 @@ export async function timelineBundleForProject(projectId: string, rangeKey: stri
     return { data: buildTimeline(rows, windowEnd, windowMs, bucketMs, false), rows, fromRollups: false };
   }
   const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
+  if (rangeKey === '30d') {
+    // 30d prefers rollups too (with previous-window trend comparison) —
+    // it's the heaviest hot range and daily buckets match the rollup
+    // grain. Coverage gaps fall back to raw, same as 'all'.
+    const { timelineFromRollups } = await import('./rollups');
+    const rolled = await timelineFromRollups(projectId, windowEnd - range.windowMs, windowEnd, range.bucketMs, true)
+      .catch((e) => { console.warn('[timeline] rollup read failed, falling back to raw', e); return null; });
+    if (rolled) return { data: rolled, rows: [], fromRollups: true };
+  }
   const rows = await timelineRowsForProject(projectId, windowEnd, range.windowMs + range.bucketMs);
   return { data: buildTimeline(rows, windowEnd, range.windowMs, range.bucketMs), rows, fromRollups: false };
 }

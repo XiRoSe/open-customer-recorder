@@ -1,12 +1,16 @@
 /**
  * Shared session-length cap logic, used by both the ingest server routes and
- * the browser tracker so the 5-minute hard cap can't drift between them.
+ * the browser tracker so the cap can't drift between them.
+ *
+ * The cap is per-project (projects.max_session_minutes, default 5). The
+ * server enforces its project's value; the tracker starts from the
+ * default and adopts the server's value from the first events response.
  *
  * Browser-safe: pure functions only, no Node APIs (this module is bundled into
  * public/tracker.js).
  */
 
-/** Hard cap on a single recorded session's length. */
+/** Default hard cap on a single recorded session's length. */
 export const MAX_SESSION_DURATION_MS = 5 * 60 * 1000;
 
 /**
@@ -15,8 +19,8 @@ export const MAX_SESSION_DURATION_MS = 5 * 60 * 1000;
  * `now() - startedAt` formula from reporting hours for sessions that resumed
  * across many page loads.
  */
-export function cappedDurationMs(startedAtMs: number, latestEventTs: number): number {
-  return Math.min(Math.max(0, latestEventTs - startedAtMs), MAX_SESSION_DURATION_MS);
+export function cappedDurationMs(startedAtMs: number, latestEventTs: number, capMs: number = MAX_SESSION_DURATION_MS): number {
+  return Math.min(Math.max(0, latestEventTs - startedAtMs), capMs);
 }
 
 /**
@@ -28,8 +32,9 @@ export function cappedDurationMs(startedAtMs: number, latestEventTs: number): nu
 export function splitAtCap<T extends { ts: number | null }>(
   events: T[],
   startedAtMs: number,
+  capMs: number = MAX_SESSION_DURATION_MS,
 ): { kept: T[]; droppedAny: boolean } {
-  const cutoffMs = startedAtMs + MAX_SESSION_DURATION_MS;
+  const cutoffMs = startedAtMs + capMs;
   const kept: T[] = [];
   let droppedAny = false;
   for (const e of events) {
@@ -45,6 +50,6 @@ export function splitAtCap<T extends { ts: number | null }>(
  * is what stops a long browse (many pages, small gaps) from living as one
  * ever-growing session.
  */
-export function isSessionExpired(startedAtMs: number, nowMs: number): boolean {
-  return nowMs - startedAtMs >= MAX_SESSION_DURATION_MS;
+export function isSessionExpired(startedAtMs: number, nowMs: number, capMs: number = MAX_SESSION_DURATION_MS): boolean {
+  return nowMs - startedAtMs >= capMs;
 }

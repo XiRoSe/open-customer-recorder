@@ -55,7 +55,11 @@ export async function sweepUserProfilesOnce(): Promise<number> {
       .from(schema.userProfiles)
       .where(and(eq(schema.userProfiles.projectId, v.project_id), eq(schema.userProfiles.visitorKey, v.visitor_key)))
       .limit(1);
-    if (existing && existing.sessionsSummarized === v.done_count && existing.status !== 'failed') continue;
+    // Regenerate only when the visitor has MORE summarized sessions than
+    // the profile was built from. A decrease means retention pruned
+    // history — rebuilding over less data would degrade the profile
+    // ("insights outlive raw data").
+    if (existing && v.done_count <= existing.sessionsSummarized && existing.status !== 'failed') continue;
     await db.insert(schema.userProfiles)
       .values({ projectId: v.project_id, visitorKey: v.visitor_key, sessionsSummarized: v.done_count, status: 'pending', attempts: 0, nextRetryAt: null })
       .onConflictDoUpdate({
@@ -127,8 +131,14 @@ export async function processNextProfile(fetchFn: typeof fetch = fetch): Promise
     try {
       const input = await buildProfileInput(row.project_id, row.visitor_key);
       if (!input) {
-        // Below threshold (e.g. summaries were deleted) — drop the row.
-        await db.execute(sql`DELETE FROM ${schema.userProfiles} WHERE id = ${row.id}`);
+        // Below threshold (summaries were pruned). Keep an existing
+        // profile — it's the only remaining record of that visitor —
+        // and only drop rows that never produced one.
+        await db.execute(sql`
+          UPDATE ${schema.userProfiles} SET status = 'done', updated_at = now()
+          WHERE id = ${row.id} AND profile_text IS NOT NULL
+        `);
+        await db.execute(sql`DELETE FROM ${schema.userProfiles} WHERE id = ${row.id} AND profile_text IS NULL`);
         return 'skip';
       }
       const ctrl = new AbortController();

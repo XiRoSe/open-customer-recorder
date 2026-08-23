@@ -17,6 +17,9 @@ export const projects = pgTable('projects', {
   projectKey: text('project_key').notNull().unique(),
   privacyMode: text('privacy_mode').notNull().default('default'),
   retentionDays: integer('retention_days').notNull().default(30),
+  // Hard cap on one recorded session's length. The server enforces it at
+  // ingest; the tracker adopts it from the first events response.
+  maxSessionMinutes: integer('max_session_minutes').notNull().default(5),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

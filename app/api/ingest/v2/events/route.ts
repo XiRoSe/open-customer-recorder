@@ -23,7 +23,7 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { parseUA } from '@/lib/ua';
 import { countryFromHeaders } from '@/lib/geoip';
-import { MAX_SESSION_DURATION_MS, splitAtCap, cappedDurationMs } from '@/lib/session-cap';
+import { splitAtCap, cappedDurationMs } from '@/lib/session-cap';
 import { hrefOf, type RawEvent } from '@/lib/url-timeline';
 import { matchesSessionCount, matchingUrlContainsRules, tagSession } from '@/lib/tag-rules';
 import { isExcluded } from '@/lib/excluded-users';
@@ -38,6 +38,8 @@ const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, OPTIONS',
   'access-control-allow-headers': 'content-type, content-encoding, x-mega-end',
+  // The tracker reads the per-project session cap off responses.
+  'access-control-expose-headers': 'x-max-session-ms',
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -171,25 +173,28 @@ export async function POST(req: NextRequest | Request) {
     return NextResponse.json({ error: 'anon mismatch' }, { status: 403, headers: CORS });
   }
 
-  // Filter events past the 5-min cap. Events without parseable timestamps
-  // are kept (rrweb always emits one, so a parse failure is exotic — drop
-  // the safety check in favor of not silently losing data).
+  // Filter events past the project's session cap. Events without
+  // parseable timestamps are kept (rrweb always emits one, so a parse
+  // failure is exotic — drop the safety check in favor of not silently
+  // losing data).
+  const capMs = Math.max(1, project.maxSessionMinutes) * 60_000;
+  const RESP = { ...CORS, 'x-max-session-ms': String(capMs) };
   const startedAtMs = existing.startedAt.getTime();
-  const cutoffMs = startedAtMs + MAX_SESSION_DURATION_MS;
-  const { kept, droppedAny } = splitAtCap(events, startedAtMs);
+  const cutoffMs = startedAtMs + capMs;
+  const { kept, droppedAny } = splitAtCap(events, startedAtMs, capMs);
 
   // If the session was already closed by a previous cap-trigger, or if
   // every event in this batch is past the cap, tell the client to stop.
   // 410 Gone is treated client-side the same as 413 (hard stop).
   if (existing.endedAt && existing.endedAt.getTime() >= cutoffMs - 1) {
-    return new Response(null, { status: 410, headers: CORS });
+    return new Response(null, { status: 410, headers: RESP });
   }
   if (events.length > 0 && kept.length === 0) {
     await db.update(schema.sessions).set({
       endedAt: new Date(cutoffMs),
-      durationMs: MAX_SESSION_DURATION_MS,
+      durationMs: capMs,
     }).where(eq(schema.sessions.id, sid));
-    return new Response(null, { status: 410, headers: CORS });
+    return new Response(null, { status: 410, headers: RESP });
   }
 
   // Re-encode the kept events (gzip them as one member so the blob
@@ -209,11 +214,11 @@ export async function POST(req: NextRequest | Request) {
   // GREATEST so we never go backwards.
   const keptTimestamps = kept.map((e) => e.ts).filter((t): t is number => t != null);
   const batchMaxTs = keptTimestamps.length ? Math.max(...keptTimestamps) : startedAtMs;
-  const cappedDuration = cappedDurationMs(startedAtMs, batchMaxTs);
+  const cappedDuration = cappedDurationMs(startedAtMs, batchMaxTs, capMs);
 
   const update: Record<string, unknown> = {
     lastActivityAt: now,
-    durationMs: sql`LEAST(GREATEST(COALESCE(${schema.sessions.durationMs}, 0), ${cappedDuration}), ${MAX_SESSION_DURATION_MS})`,
+    durationMs: sql`LEAST(GREATEST(COALESCE(${schema.sessions.durationMs}, 0), ${cappedDuration}), ${capMs})`,
     pageCount: sql`GREATEST(${schema.sessions.pageCount}, ${clientPageCount})`,
   };
   if (bodyToStore.length > 0) {
@@ -230,6 +235,6 @@ export async function POST(req: NextRequest | Request) {
   if (matchedRuleIds.length > 0) await tagSession(sid, [...new Set(matchedRuleIds)]);
 
   // Tell the client the cap is reached so it stops sending further chunks.
-  if (droppedAny) return new Response(null, { status: 410, headers: CORS });
-  return new Response(null, { status: 204, headers: CORS });
+  if (droppedAny) return new Response(null, { status: 410, headers: RESP });
+  return new Response(null, { status: 204, headers: RESP });
 }

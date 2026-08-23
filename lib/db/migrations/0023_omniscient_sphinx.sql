@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "max_session_minutes" integer DEFAULT 5 NOT NULL;

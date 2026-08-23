@@ -21,6 +21,9 @@ interface PersistedState {
   pageCount: number;
   expires: number;
   pageUrl: string;
+  /** Per-project session cap, adopted from the server's first events
+   * response. Absent = the built-in default. */
+  cap?: number;
 }
 
 const ANON_KEY = 'mega_anon_id';
@@ -81,15 +84,15 @@ function loadPersisted(): PersistedState | null {
     if (Date.now() > p.expires) return null;
     // Past the hard cap → don't resume. The next page starts a fresh session
     // so a long browse (many pages, small gaps) can't live as one
-    // ever-growing session that blows past the 5-minute cap.
-    if (isSessionExpired(p.startedAt, Date.now())) return null;
+    // ever-growing session that blows past the cap.
+    if (isSessionExpired(p.startedAt, Date.now(), p.cap ?? MAX_SESSION_DURATION_MS)) return null;
     return p;
   } catch {
     return null;
   }
 }
 
-function persist(s: { sid: string; startedAt: number; pageCount: number; pageUrl: string }) {
+function persist(s: { sid: string; startedAt: number; pageCount: number; pageUrl: string; cap?: number }) {
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, expires: Date.now() + SESSION_TTL_MS } satisfies PersistedState));
   } catch {}
@@ -118,12 +121,15 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
   const startedAt = persisted?.startedAt || Date.now();
   let pageCount = persisted?.pageCount || 1;
   let lastUrl = typeof window !== 'undefined' ? window.location.href : '';
+  // Per-project session cap: default until the server reports its value
+  // in an events response header, then persisted across page loads.
+  let capMs = persisted?.cap || MAX_SESSION_DURATION_MS;
 
   // If we resumed and the URL changed, count this as a new page.
   if (persisted && persisted.pageUrl !== lastUrl) {
     pageCount += 1;
   }
-  persist({ sid, startedAt, pageCount, pageUrl: lastUrl });
+  persist({ sid, startedAt, pageCount, pageUrl: lastUrl, cap: capMs });
 
   // Buffer of events captured by rrweb but not yet ack'd by the server.
   // Drained only on POST success (splice from front) — never optimistically,
@@ -237,14 +243,7 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
 
     flushTimer = window.setInterval(() => { void flush(); }, FLUSH_INTERVAL_MS);
     activityTimer = window.setInterval(checkActivity, ACTIVITY_CHECK_INTERVAL_MS);
-    // Exact hard stop at startedAt + MAX_SESSION_DURATION_MS. The 30 s
-    // polling check would otherwise let a session overshoot by up to one
-    // interval; with this we honor the cap to the millisecond.
-    const remainingMs = Math.max(0, startedAt + MAX_SESSION_DURATION_MS - Date.now());
-    maxDurationTimer = window.setTimeout(() => {
-      console.log('[recorder] session ended — max duration', Math.round((Date.now() - startedAt) / 1000), 's');
-      stop(true);
-    }, remainingMs);
+    armMaxDurationTimer();
     hookHistory();
 
     // beforeunload / pagehide are the only paths where the page is about
@@ -270,6 +269,19 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
     }
   }
 
+  // Exact hard stop at startedAt + cap. The 30 s polling check would
+  // otherwise let a session overshoot by up to one interval; with this
+  // we honor the cap to the millisecond. Re-armed if the server reports
+  // a different per-project cap.
+  function armMaxDurationTimer() {
+    if (maxDurationTimer) clearTimeout(maxDurationTimer);
+    const remainingMs = Math.max(0, startedAt + capMs - Date.now());
+    maxDurationTimer = window.setTimeout(() => {
+      console.log('[recorder] session ended — max duration', Math.round((Date.now() - startedAt) / 1000), 's');
+      stop(true);
+    }, remainingMs);
+  }
+
   function checkActivity() {
     if (stopped) return;
     const idle = Date.now() - lastInteractionAt;
@@ -277,7 +289,7 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
     if (idle > INACTIVITY_TIMEOUT_MS) {
       console.log('[recorder] session ended — idle', Math.round(idle / 1000), 's');
       stop(true);
-    } else if (age > MAX_SESSION_DURATION_MS) {
+    } else if (age > capMs) {
       console.log('[recorder] session ended — max duration', Math.round(age / 1000), 's');
       stop(true);
     }
@@ -296,7 +308,7 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
       lastUrl = url;
       pageCount += 1;
       eagerFirstFlushScheduled = false;
-      persist({ sid, startedAt, pageCount, pageUrl: lastUrl });
+      persist({ sid, startedAt, pageCount, pageUrl: lastUrl, cap: capMs });
     };
     const origPush = history.pushState;
     history.pushState = function (...args: Parameters<typeof history.pushState>) {
@@ -405,8 +417,17 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
         return;
       }
       if (sentCount > 0) buffer.splice(0, sentCount);
+      // Adopt the server's per-project session cap (exposed header).
+      const capHeader = res.headers.get('x-max-session-ms');
+      if (capHeader) {
+        const v = parseInt(capHeader, 10);
+        if (Number.isFinite(v) && v > 0 && v !== capMs) {
+          capMs = v;
+          armMaxDurationTimer();
+        }
+      }
       // Refresh persisted TTL on success.
-      persist({ sid, startedAt, pageCount, pageUrl: lastUrl });
+      persist({ sid, startedAt, pageCount, pageUrl: lastUrl, cap: capMs });
 
       // Send identify after the first successful POST (which guarantees
       // the session row exists server-side).

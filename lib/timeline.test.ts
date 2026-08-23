@@ -167,18 +167,18 @@ describe('buildTimeline', () => {
     expect(t.totals.sessions - t.totals.newSessions).toBe(1);
   });
 
-  it('new-visitor chip reflects share of sessions, matching the split bar', () => {
+  it('new-visitor chip counts only literal first sessions (first-ever semantics)', () => {
     const old = new Date(END - 40 * HOUR);
     const rows = [
       row(2, { visitorKey: 'returning', firstSeenAt: old }),
       row(3, { visitorKey: 'fresh-a' }),
-      row(4, { visitorKey: 'fresh-b' }),
+      // fresh-b's first session (5h ago) and their same-window return —
+      // the return counts as returning, not new.
+      row(4, { visitorKey: 'fresh-b', firstSeenAt: new Date(END - 5 * HOUR) }),
       row(5, { visitorKey: 'fresh-b' }),
     ];
     const t = buildTimeline(rows, END, WINDOW, HOUR);
-    // 3 of 4 sessions are from first-time visitors → 75%, even though
-    // only 2 distinct new visitors exist.
-    expect(t.trends.find((c) => c.label === 'New visitors')!.value).toBe('75%');
+    expect(t.trends.find((c) => c.label === 'New visitors')!.value).toBe('50%');
   });
 
   it('aggregates avg duration and per-kind friction counts', () => {

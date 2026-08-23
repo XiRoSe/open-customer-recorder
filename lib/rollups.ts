@@ -5,7 +5,7 @@
 import { sql, and, eq, gte, lt, asc } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import {
-  timelineRowsForProject, deviceOf, hostOfUrl, pathOfUrl,
+  timelineRowsForProject, deviceOf, hostOfUrl, pathOfUrl, trendChips,
   type TimelineData, type TimelineBucket, type TimelineTotals, type TrendChip,
   type TimelineSessionRow,
 } from './timeline';
@@ -127,23 +127,37 @@ interface RollupRow {
  * The current partial hour is fetched raw and merged in. */
 export async function timelineFromRollups(
   projectId: string, windowStart: number, windowEnd: number, bucketMs: number,
+  comparePrevious = false,
 ): Promise<TimelineData | null> {
   const alignedStart = Math.floor(windowStart / bucketMs) * bucketMs;
   const currentHour = Math.floor(windowEnd / HOUR_MS) * HOUR_MS;
-  // Coverage is measured from the window's first real hour — bucket
-  // alignment (weekly especially) can reach back before any session
-  // existed, and those hours legitimately have no rollup rows.
-  const coverageStart = Math.floor(windowStart / HOUR_MS) * HOUR_MS;
+  // Coverage is measured from the window's first hour that could have a
+  // rollup: bucket alignment (weekly especially) and the previous-window
+  // comparison can reach back before the project's first session — those
+  // hours legitimately have no rows and count as zero.
+  const [minRow] = await db.select({ min: sql<string | null>`min(${schema.timelineRollups.hourStart})::text` })
+    .from(schema.timelineRollups).where(eq(schema.timelineRollups.projectId, projectId));
+  if (!minRow?.min) return null;
+  const minHour = new Date(minRow.min).getTime();
+
+  const realWindowMs = windowEnd - alignedStart;
+  const prevStart = alignedStart - realWindowMs;
+  const fetchStart = comparePrevious ? prevStart : windowStart;
+  const coverageStart = Math.max(Math.floor(fetchStart / HOUR_MS) * HOUR_MS, minHour);
   const expectedHours = Math.max(0, Math.ceil((currentHour - coverageStart) / HOUR_MS));
 
-  const rollups = (await db.select().from(schema.timelineRollups)
+  const allRollups = (await db.select().from(schema.timelineRollups)
     .where(and(
       eq(schema.timelineRollups.projectId, projectId),
       gte(schema.timelineRollups.hourStart, new Date(coverageStart)),
       lt(schema.timelineRollups.hourStart, new Date(currentHour)),
     ))
     .orderBy(asc(schema.timelineRollups.hourStart))) as RollupRow[];
-  if (expectedHours === 0 || rollups.length < expectedHours) return null; // coverage gap → raw
+  if (expectedHours === 0 || allRollups.length < expectedHours) return null; // coverage gap → raw
+  const rollups = allRollups.filter((r) => r.hourStart.getTime() >= alignedStart);
+  const prevRollups = comparePrevious
+    ? allRollups.filter((r) => r.hourStart.getTime() < alignedStart)
+    : [];
 
   // Live tail: the current partial hour, raw — through the SAME
   // aggregator as the builder.
@@ -208,14 +222,25 @@ export async function timelineFromRollups(
     }
   }
 
-  // Plain-total chips — rollups only serve the no-comparison 'all' range.
-  const pct = (n: number, d: number) => (d > 0 ? Math.round((100 * n) / d) : 0);
-  const trends: TrendChip[] = [
-    { label: 'Sessions', value: `${totals.sessions}`, direction: 'flat' },
-    { label: 'Engaged (30s+)', value: `${pct(totals.engaged, totals.sessions)}%`, direction: 'flat' },
-    { label: 'Frustration', value: `${pct(totals.frustrated, totals.sessions)}%`, direction: 'flat' },
-    { label: 'New visitors', value: `${pct(totals.newSessions, Math.max(1, totals.sessions))}%`, direction: 'flat' },
-  ];
+  // Trend chips through the SAME builder as the raw path; the previous
+  // window's totals are summed from its rollup hours.
+  let prevTotals: TimelineTotals | null = null;
+  if (comparePrevious) {
+    prevTotals = {
+      sessions: 0, engaged: 0, frustrated: 0, newVisitors: 0, newSessions: 0,
+      avgDurationMs: 0, insightCounts: {}, bySource: emptySources(),
+      byDevice: {}, byBrowser: {}, byCountry: {}, byReferrerHost: {}, byEntryPath: {},
+    };
+    for (const h of prevRollups) {
+      prevTotals.sessions += h.sessions;
+      prevTotals.engaged += h.engaged;
+      prevTotals.frustrated += h.frustrated;
+      prevTotals.newVisitors += h.newVisitorSessions;
+      prevTotals.newSessions += h.newVisitorSessions;
+      addInto(prevTotals.bySource as NumMap, h.bySource);
+    }
+  }
+  const trends: TrendChip[] = trendChips(totals, prevTotals);
 
   // Tag colors come from the rules, not the rows.
   const rules = await db.select({ name: schema.tagRules.name, color: schema.tagRules.color })
@@ -265,7 +290,11 @@ export async function frictionEntryFromRollups(
 /** Deletion IS the invalidation mechanism: the scheduler's missing-hour
  * scan rebuilds anything deleted here. Pass hours to target specific
  * project-hours, or omit to invalidate the project's whole history
- * (tag-rule retro-apply, digest-version bumps). */
+ * (tag-rule retro-apply, digest-version bumps).
+ *
+ * Project-wide mode never deletes hours older than the surviving raw
+ * sessions: those rollups are the ONLY remaining record of pruned
+ * history ("insights outlive raw data") and a rebuild would zero them. */
 export async function invalidateRollups(projectId: string, hourStarts?: number[]): Promise<void> {
   if (hourStarts && hourStarts.length === 0) return;
   if (hourStarts) {
@@ -275,6 +304,14 @@ export async function invalidateRollups(projectId: string, hourStarts?: number[]
         AND hour_start = ANY(${hourStarts.map((h) => new Date(h).toISOString())}::timestamptz[])
     `);
   } else {
-    await db.delete(schema.timelineRollups).where(eq(schema.timelineRollups.projectId, projectId));
+    await db.execute(sql`
+      DELETE FROM ${schema.timelineRollups}
+      WHERE project_id = ${projectId}
+        AND hour_start >= coalesce(
+          (SELECT date_trunc('hour', min(started_at)) FROM ${schema.sessions}
+           WHERE project_id = ${projectId} AND event_count > 0),
+          now()
+        )
+    `);
   }
 }
