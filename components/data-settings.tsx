@@ -11,10 +11,13 @@ export function DataSettings({ projectId, initialRetentionDays, initialMaxSessio
 }) {
   const [retentionDays, setRetentionDays] = useState(initialRetentionDays);
   const [maxSessionMinutes, setMaxSessionMinutes] = useState(initialMaxSessionMinutes);
+  // Baseline advances on every successful save, so edits can always be
+  // reverted-and-saved without a page reload.
+  const [baseline, setBaseline] = useState({ retentionDays: initialRetentionDays, maxSessionMinutes: initialMaxSessionMinutes });
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState('');
 
-  const dirty = retentionDays !== initialRetentionDays || maxSessionMinutes !== initialMaxSessionMinutes;
+  const dirty = retentionDays !== baseline.retentionDays || maxSessionMinutes !== baseline.maxSessionMinutes;
 
   const save = async () => {
     setState('saving');
@@ -29,6 +32,7 @@ export function DataSettings({ projectId, initialRetentionDays, initialMaxSessio
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || `save failed (${res.status})`);
       }
+      setBaseline({ retentionDays, maxSessionMinutes });
       setState('saved');
       setTimeout(() => setState('idle'), 2500);
     } catch (e) {
