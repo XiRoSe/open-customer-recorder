@@ -34,9 +34,13 @@ export function getQueue(name: QueueName): Queue | null {
     q = new Queue(name, {
       connection: conn,
       defaultJobOptions: {
-        attempts: 1,                       // retries live in the DB rows
-        removeOnComplete: { count: 200 },  // keep a short trail for the Infra page
-        removeOnFail: { count: 200 },
+        attempts: 1,             // retries live in the DB rows
+        // Jobs must vanish on completion: a finished job's id lingering
+        // in the completed/failed sets makes BullMQ silently ignore the
+        // next add with the same jobId — which would break DB-driven
+        // retries and the recurring rollup refresh. The DB is the trail.
+        removeOnComplete: true,
+        removeOnFail: true,
       },
     });
     queues.set(name, q);
