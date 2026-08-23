@@ -43,7 +43,7 @@ export default function LoginPage() {
           <Button type="submit" disabled={busy} className="w-full">{busy ? 'Logging in…' : 'Log in'}</Button>
         </form>
         <p className="text-xs text-muted-foreground text-center">
-          Login uses ADMIN_EMAIL + ADMIN_PASSWORD env vars.
+          Accounts are managed in Settings → Team.
         </p>
       </Card>
     </main>
