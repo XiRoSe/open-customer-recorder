@@ -262,31 +262,25 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
   const fetchStart = new Date(windowEnd - 2 * windowMs).toISOString();
   interface Row extends Record<string, unknown> {
     started_at: string; duration_ms: number | null; referrer: string | null; page_url: string | null;
-    visitor_key: string; first_seen_at: string; frustrated: boolean; insights: { kind?: string }[] | null;
-    clicks: number; tags: { name: string; color: string }[] | null;
+    visitor_key: string; first_seen_at: string; insights: { kind?: string }[] | null;
+    clicks: number | null; tags: { name: string; color: string }[] | null;
     country: string | null; browser: string | null; user_agent: string | null;
   }
+  // session_id is unique on summaries — one LEFT JOIN carries insights
+  // and the denormalized clicks count; frustration derives in the mapper.
   const res = await db.execute<Row>(sql`
     SELECT s.started_at, s.duration_ms, s.referrer, s.page_url,
            s.country, s.browser, s.user_agent,
            coalesce(s.user_id, s.anon_id) AS visitor_key,
            first_seen.at AS first_seen_at,
-           EXISTS (
-             SELECT 1 FROM ${schema.sessionSummaries} ss
-             WHERE ss.session_id = s.id AND jsonb_array_length(ss.insights) > 0
-           ) AS frustrated,
-           (SELECT ss2.insights FROM ${schema.sessionSummaries} ss2 WHERE ss2.session_id = s.id LIMIT 1) AS insights,
-           coalesce((
-             -- The digest's stats carry the TRUE click count; the steps
-             -- array is elided to 60 entries and would undercount.
-             SELECT (ss3.digest->'stats'->>'clickCount')::int
-             FROM ${schema.sessionSummaries} ss3 WHERE ss3.session_id = s.id
-           ), 0) AS clicks,
+           ss.insights AS insights,
+           ss.clicks AS clicks,
            (SELECT jsonb_agg(jsonb_build_object('name', tr.name, 'color', tr.color))
             FROM ${schema.sessionTags} st
             JOIN ${schema.tagRules} tr ON tr.id = st.tag_rule_id
             WHERE st.session_id = s.id) AS tags
     FROM ${schema.sessions} s
+    LEFT JOIN ${schema.sessionSummaries} ss ON ss.session_id = s.id
     JOIN LATERAL (
       SELECT min(s2.started_at) AS at FROM ${schema.sessions} s2
       WHERE s2.project_id = s.project_id AND coalesce(s2.user_id, s2.anon_id) = coalesce(s.user_id, s.anon_id)
@@ -294,21 +288,24 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
     WHERE s.project_id = ${projectId} AND s.event_count > 0 AND s.started_at >= ${fetchStart}::timestamptz
   `);
   const rows: Row[] = Array.isArray(res) ? res : (res as unknown as { rows: Row[] }).rows ?? [];
-  return rows.map((r) => ({
-    startedAt: new Date(r.started_at),
-    durationMs: r.duration_ms,
-    referrer: r.referrer,
-    pageUrl: r.page_url,
-    visitorKey: r.visitor_key,
-    firstSeenAt: new Date(r.first_seen_at),
-    frustrated: r.frustrated,
-    insightKinds: (r.insights ?? []).map((i) => i.kind).filter((k): k is string => Boolean(k)),
-    clicks: r.clicks,
-    tags: r.tags ?? [],
-    country: r.country,
-    browser: r.browser,
-    userAgent: r.user_agent,
-  }));
+  return rows.map((r) => {
+    const insightKinds = (r.insights ?? []).map((i) => i.kind).filter((k): k is string => Boolean(k));
+    return {
+      startedAt: new Date(r.started_at),
+      durationMs: r.duration_ms,
+      referrer: r.referrer,
+      pageUrl: r.page_url,
+      visitorKey: r.visitor_key,
+      firstSeenAt: new Date(r.first_seen_at),
+      frustrated: insightKinds.length > 0,
+      insightKinds,
+      clicks: r.clicks ?? 0,
+      tags: r.tags ?? [],
+      country: r.country,
+      browser: r.browser,
+      userAgent: r.user_agent,
+    };
+  });
 }
 
 export async function timelineForProject(projectId: string, rangeKey: string): Promise<TimelineData> {

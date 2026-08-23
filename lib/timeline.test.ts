@@ -35,8 +35,9 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
     }).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: s.id, digestVersion: 1, narrative: '', insights: [], status: 'done',
-      // clicks come from stats.clickCount — the steps array is elided
-      // to 60 entries and would undercount busy sessions.
+      // clicks is denormalized from stats.clickCount at sweep time — the
+      // steps array is elided to 60 entries and would undercount.
+      clicks: 2,
       digest: { stats: { clickCount: 2 }, steps: [
         { t: 1, kind: 'click', label: 'Buy', tag: 'button' },
         { t: 2, kind: 'click', label: 'Buy again', tag: 'button' },

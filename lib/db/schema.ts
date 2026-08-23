@@ -135,6 +135,9 @@ export const sessionSummaries = pgTable('session_summaries', {
   digestVersion: integer('digest_version').notNull(),
   narrative: text('narrative').notNull(),
   insights: jsonb('insights').notNull(),
+  // Denormalized from digest.stats.clickCount at sweep time so timeline
+  // reads never detoast the digest jsonb per row.
+  clicks: integer('clicks').notNull().default(0),
   intentText: text('intent_text'),
   // Whether replay screenshots were attached to the LLM call that produced
   // intentText — drives the "Visual analysis" chip in the UI.

@@ -66,6 +66,7 @@ export async function runSummarySweepOnce(): Promise<number> {
       values = {
         sessionId: c.id, digest, digestVersion: DIGEST_VERSION,
         narrative: renderNarrative(digest), insights: digest.insights,
+        clicks: digest.stats?.clickCount ?? 0,
         status: 'pending', attempts: 0, nextRetryAt: null,
       };
     } catch (e) {
