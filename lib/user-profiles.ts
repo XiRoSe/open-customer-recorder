@@ -192,6 +192,16 @@ export async function drainUserProfiles(fetchFn: typeof fetch = fetch): Promise<
   return done;
 }
 
+/** Crash recovery: a worker that died mid-call leaves a 'processing'
+ * profile row that would otherwise never be claimed again. Anything
+ * processing >10 min is orphaned — back to pending. */
+export async function resetStuckProfiles(): Promise<void> {
+  await db.execute(sql`
+    UPDATE ${schema.userProfiles} SET status = 'pending', updated_at = now()
+    WHERE status = 'processing' AND updated_at < now() - interval '10 minutes'
+  `);
+}
+
 /** Due pending profiles with age, for the queue reconciler. */
 export async function duePendingProfiles(limit = 200): Promise<{ id: string; ageMinutes: number }[]> {
   const res = await db.execute<{ id: string; age_minutes: number }>(sql`

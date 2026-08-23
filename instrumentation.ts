@@ -22,7 +22,7 @@ export async function register() {
 
   const { runSummarySweepOnce } = await import('./lib/session-summaries');
   const { drainSummaryQueue, processNextSummary, duePendingSummaries, resetStuckProcessing } = await import('./lib/summary-worker');
-  const { sweepUserProfilesOnce, drainUserProfiles, processNextProfile, duePendingProfiles } = await import('./lib/user-profiles');
+  const { sweepUserProfilesOnce, drainUserProfiles, processNextProfile, duePendingProfiles, resetStuckProfiles } = await import('./lib/user-profiles');
   const { runClusteringOnce } = await import('./lib/user-segments');
   const { refreshTimelineAnalyses } = await import('./lib/timeline');
   const { queuesEnabled, getQueue, enqueueSignals, redisConnection } = await import('./lib/queue');
@@ -139,5 +139,6 @@ export async function register() {
   setInterval(timelineCycle, 60 * 60 * 1000);
   setInterval(() => {
     resetStuckProcessing().catch((e) => console.warn('[summaries] reset failed', e));
+    resetStuckProfiles().catch((e) => console.warn('[profiles] reset failed', e));
   }, 5 * 60 * 1000);
 }
