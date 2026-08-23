@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { readSessionCookie } from '@/lib/auth';
 import Link from 'next/link';
 import { ProjectNav } from '@/components/project-nav';
+import { Researcher } from '@/components/researcher/researcher';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await readSessionCookie();
@@ -22,6 +23,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         )}
       </header>
       <div className="flex-1">{children}</div>
+      {/* Renders only on project section pages (derives the project from the URL). */}
+      {session && <Researcher name={session.name} email={session.email} />}
     </div>
   );
 }
