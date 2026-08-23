@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, and, gte, lte, desc, count, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, count, sql, getTableColumns } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 
 export async function GET(req: NextRequest | Request, ctx: { params: Promise<{ id: string }> }) {
@@ -27,7 +27,9 @@ export async function GET(req: NextRequest | Request, ctx: { params: Promise<{ i
 
   const where = and(...conds);
   const [{ value: total }] = await db.select({ value: count() }).from(schema.sessions).where(where);
-  const sessions = await db.select().from(schema.sessions)
+  // Exclude blob_data: it would be JSON-serialized into the response.
+  const { blobData: _blobData, ...listColumns } = getTableColumns(schema.sessions);
+  const sessions = await db.select(listColumns).from(schema.sessions)
     .where(where)
     .orderBy(desc(schema.sessions.startedAt))
     .limit(pageSize)

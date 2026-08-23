@@ -14,7 +14,7 @@ describe.skipIf(!dbReady)('POST /api/ingest/sessions/:id/end', () => {
   it('records ended_at, duration_ms, page_count', async () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
-      projectId: project.id, anonId: 'a', startedAt: new Date(), blobPath: 'sessions/x.ndjson.gz',
+      projectId: project.id, anonId: 'a', startedAt: new Date(),
     }).returning();
     const token = await signIngestToken({ sessionId: s.id, projectId: project.id });
     const res = await POST(

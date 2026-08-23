@@ -5,9 +5,10 @@
 import { sql, and, eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import {
-  timelineBundleForProject, timelineAnalysis, TIMELINE_RANGES,
+  timelineBundleForProject, timelineAnalysis, TIMELINE_RANGES, pathOfUrl,
   type TimelineData, type TimelineSessionRow, type TimelinePatterns,
 } from './timeline';
+import { pickWorstEntry } from './rollups';
 import { SOURCE_META } from './traffic-source';
 import { clustersDataForProject, activeVisitorKeys, filterDimsByVisitors } from './user-segments';
 
@@ -30,32 +31,22 @@ export interface NoteworthySession {
 
 export interface ActiveSegment { name: string; description: string; active: number; size: number; colorIndex: number }
 
-const pathOf = (url: string | null | undefined): string | null => {
-  if (!url) return null;
-  try { return new URL(url).pathname || '/'; } catch { return null; }
-};
-
-/** Entry page with the highest friction rate (≥5 sessions, ≥20% rate). */
+/** Entry page with the highest friction rate — same rule and path
+ * normalization as the rollup pipeline (pickWorstEntry / pathOfUrl). */
 export function worstFrictionEntry(rows: TimelineSessionRow[], windowStart: number, windowEnd: number):
   { path: string; rate: number; sessions: number } | null {
   const byPath = new Map<string, { n: number; bad: number }>();
   for (const r of rows) {
     const t = r.startedAt.getTime();
     if (t < windowStart || t >= windowEnd) continue;
-    const p = pathOf(r.pageUrl);
+    const p = pathOfUrl(r.pageUrl);
     if (!p) continue;
     const e = byPath.get(p) ?? { n: 0, bad: 0 };
     e.n++;
     if (r.frustrated) e.bad++;
     byPath.set(p, e);
   }
-  let best: { path: string; rate: number; sessions: number } | null = null;
-  for (const [path, { n, bad }] of byPath) {
-    if (n < 5) continue;
-    const rate = bad / n;
-    if (rate >= 0.2 && (!best || rate > best.rate)) best = { path, rate: Math.round(rate * 100), sessions: n };
-  }
-  return best;
+  return pickWorstEntry(byPath);
 }
 
 const fmtWhen = (ms: number, hourly: boolean): string => {

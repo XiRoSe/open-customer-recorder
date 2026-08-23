@@ -130,14 +130,14 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           <Card className="p-4" title="Total Postgres size — replay blobs are the main consumer; retention keeps this bounded.">
             <div className="text-2xl font-semibold tabular-nums">{fmtBytes(infra.dbBytes)}</div>
             <div className="text-sm text-muted-foreground">Database size</div>
-            <div className="text-xs text-muted-foreground mt-1">{fmtBytes(infra.blobBytes)} replay blobs</div>
+            <div className="text-xs text-muted-foreground mt-1">{fmtBytes(infra.sessionsBytes)} sessions table (incl. replays)</div>
           </Card>
           <Card className="p-4" title="Redis-backed job queues (BullMQ). Off means the built-in in-process loops are running instead.">
             <div className="text-2xl font-semibold">{infra.queuesEnabled ? (infra.queues ? 'on' : 'error') : 'off'}</div>
             <div className="text-sm text-muted-foreground">Job queues (Redis)</div>
             {infra.queues && (
               <div className="text-xs text-muted-foreground mt-1 tabular-nums">
-                {(Object.entries(infra.queues) as [string, { waiting: number; active: number; failed: number }][])
+                {(Object.entries(infra.queues) as [string, { waiting: number; active: number }][])
                   .map(([n, c]) => `${n} ${c.waiting + c.active}`).join(' · ')}
               </div>
             )}

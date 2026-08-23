@@ -109,8 +109,11 @@ export default async function SessionsPage(props: {
   // beacon + activity within 6 min — the tracker's 5-min resume TTL plus
   // slack; see ABANDONED_AFTER_MS), so this column and the pipeline
   // never disagree about whether a session is over.
+  // Never pull blob_data into the list — 50 gzipped replay blobs per
+  // page view is the most expensive no-op in the app.
+  const { blobData: _blobData, ...sessionListColumns } = getTableColumns(schema.sessions);
   const rows = await db.select({
-    ...getTableColumns(schema.sessions),
+    ...sessionListColumns,
     ongoing: sql<boolean>`(${schema.sessions.endedAt} IS NULL AND ${schema.sessions.lastActivityAt} > now() - interval '6 minutes')`,
   }).from(schema.sessions).where(where).orderBy(orderExpr)
     .limit(PAGE_SIZE).offset((currentPage - 1) * PAGE_SIZE);

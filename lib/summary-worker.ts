@@ -113,7 +113,7 @@ export async function processNextSummary(
       UPDATE ${schema.sessionSummaries}
       SET status = 'done', intent_text = ${intentText}, model = ${llmModelLabel()},
           visual_used = ${visualUsed}, updated_at = now()
-      WHERE id = ${row.id}
+      WHERE id = ${row.id} AND status = 'processing'
     `);
     return 'done';
   } catch (e) {
@@ -126,7 +126,7 @@ export async function processNextSummary(
       SET status = ${failed ? 'failed' : 'pending'}, attempts = ${attempts},
           next_retry_at = ${retryAt}::timestamptz,
           updated_at = now()
-      WHERE id = ${row.id}
+      WHERE id = ${row.id} AND status = 'processing'
     `);
     console.warn('[summary-worker] attempt failed', row.id, e instanceof Error ? e.message : e);
     return failed ? 'skip' : 'error'; // terminal failure doesn't pause the burst

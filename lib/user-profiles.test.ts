@@ -33,7 +33,7 @@ async function seedVisitor(projectId: string, anonId: string, intents: string[])
   for (let i = 0; i < intents.length; i++) {
     const [s] = await db.insert(schema.sessions).values({
       projectId, anonId, startedAt: new Date(Date.now() - (intents.length - i) * 86_400_000),
-      endedAt: new Date(), eventCount: 1, blobPath: '',
+      endedAt: new Date(), eventCount: 1,
     }).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: s.id, digest: {}, digestVersion: 1, narrative: '', insights: [],

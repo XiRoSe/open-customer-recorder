@@ -26,7 +26,7 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     const blob = makeBlob();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a1', startedAt: new Date(T0), endedAt: new Date(T0 + 1000),
-      eventCount: 3, blobPath: '', blobBytes: blob.length, blobData: blob,
+      eventCount: 3, blobBytes: blob.length, blobData: blob,
     }).returning();
     const n = await runSummarySweepOnce();
     expect(n).toBe(1);
@@ -39,8 +39,8 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
   it('skips live sessions (no endedAt, recent activity) and 0-event sessions', async () => {
     const { project } = await createOrgWithProject();
     await db.insert(schema.sessions).values([
-      { projectId: project.id, anonId: 'live', startedAt: new Date(), lastActivityAt: new Date(), eventCount: 5, blobPath: '', blobData: makeBlob() },
-      { projectId: project.id, anonId: 'empty', startedAt: new Date(), endedAt: new Date(), eventCount: 0, blobPath: '' },
+      { projectId: project.id, anonId: 'live', startedAt: new Date(), lastActivityAt: new Date(), eventCount: 5, blobData: makeBlob() },
+      { projectId: project.id, anonId: 'empty', startedAt: new Date(), endedAt: new Date(), eventCount: 0 },
     ]);
     expect(await runSummarySweepOnce()).toBe(0);
   });
@@ -50,7 +50,7 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     const old = new Date(Date.now() - 7 * 60 * 1000);
     await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'gone', startedAt: old, lastActivityAt: old,
-      eventCount: 3, blobPath: '', blobData: makeBlob(),
+      eventCount: 3, blobData: makeBlob(),
     });
     expect(await runSummarySweepOnce()).toBe(1);
   });
@@ -59,7 +59,7 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a1', startedAt: new Date(T0), endedAt: new Date(),
-      eventCount: 3, blobPath: '', blobData: makeBlob(),
+      eventCount: 3, blobData: makeBlob(),
     }).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: s.id, digest: {}, digestVersion: DIGEST_VERSION - 1, narrative: 'old', insights: [],
@@ -74,7 +74,7 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a1', startedAt: new Date(T0), endedAt: new Date(),
-      eventCount: 3, blobPath: '', blobData: makeBlob(), referrer: 'https://google.com/',
+      eventCount: 3, blobData: makeBlob(), referrer: 'https://google.com/',
     }).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: s.id, digest: {}, digestVersion: DIGEST_VERSION - 1, narrative: 'old', insights: [],
@@ -93,7 +93,7 @@ describe.skipIf(!dbReady)('runSummarySweepOnce', () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'bad', startedAt: new Date(), endedAt: new Date(),
-      eventCount: 3, blobPath: '', blobData: Buffer.from('not gzip at all'),
+      eventCount: 3, blobData: Buffer.from('not gzip at all'),
     }).returning();
     await expect(runSummarySweepOnce()).resolves.toBe(1);
     const [row] = await db.select().from(schema.sessionSummaries).where(eq(schema.sessionSummaries.sessionId, s.id));
@@ -105,7 +105,7 @@ describe.skipIf(!dbReady)('summariesForSessions', () => {
   it('returns intent/narrative/status keyed by session id', async () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
-      projectId: project.id, anonId: 'a1', startedAt: new Date(), endedAt: new Date(), eventCount: 1, blobPath: '',
+      projectId: project.id, anonId: 'a1', startedAt: new Date(), endedAt: new Date(), eventCount: 1,
     }).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: s.id, digest: {}, digestVersion: DIGEST_VERSION, narrative: '0:00 Landed on /',

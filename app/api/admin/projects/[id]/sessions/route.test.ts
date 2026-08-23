@@ -17,8 +17,8 @@ describe.skipIf(!dbReady)('GET /api/admin/projects/:id/sessions', () => {
   it('returns sessions for the project, scoped to org', async () => {
     const { org, project } = await createOrgWithProject();
     await db.insert(schema.sessions).values([
-      { projectId: project.id, anonId: 'a1', startedAt: new Date(), blobPath: 'sessions/a1.ndjson.gz', durationMs: 5000, pageUrl: '/p1' },
-      { projectId: project.id, anonId: 'a2', startedAt: new Date(), blobPath: 'sessions/a2.ndjson.gz', durationMs: 3000, pageUrl: '/p2' },
+      { projectId: project.id, anonId: 'a1', startedAt: new Date(), durationMs: 5000, pageUrl: '/p1' },
+      { projectId: project.id, anonId: 'a2', startedAt: new Date(), durationMs: 3000, pageUrl: '/p2' },
     ]);
     const token = await signSessionJwt({ orgId: org.id, email: 'admin@example.com' });
     const res = await GET(

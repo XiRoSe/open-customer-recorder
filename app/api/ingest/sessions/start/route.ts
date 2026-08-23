@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { and, eq, gt, desc } from 'drizzle-orm';
 import { signIngestToken } from '@/lib/ingest-token';
-import { initBlobDir, blobPathFor } from '@/lib/blob';
 import { parseUA } from '@/lib/ua';
 import { countryFromHeaders } from '@/lib/geoip';
 
@@ -37,7 +36,7 @@ export async function POST(req: NextRequest | Request) {
 
   // Try to resume a recent session for this anonId on this project.
   const cutoff = new Date(Date.now() - RESUME_WINDOW_MS);
-  const [recent] = await db.select().from(schema.sessions)
+  const [recent] = await db.select({ id: schema.sessions.id }).from(schema.sessions)
     .where(and(
       eq(schema.sessions.projectId, project.id),
       eq(schema.sessions.anonId, anonId),
@@ -64,7 +63,6 @@ export async function POST(req: NextRequest | Request) {
   const ua = parseUA(userAgent);
   const country = await countryFromHeaders(req.headers);
 
-  await initBlobDir();
   const [s] = await db.insert(schema.sessions).values({
     projectId: project.id,
     anonId,
@@ -75,11 +73,7 @@ export async function POST(req: NextRequest | Request) {
     country,
     startedAt: new Date(),
     lastActivityAt: new Date(),
-    blobPath: '',
-  }).returning();
-  // patch blob path now that we have id
-  const path = blobPathFor(s.id);
-  await db.update(schema.sessions).set({ blobPath: path }).where(eq(schema.sessions.id, s.id));
+  }).returning({ id: schema.sessions.id });
 
   const ingestToken = await signIngestToken({ sessionId: s.id, projectId: project.id });
   return NextResponse.json({

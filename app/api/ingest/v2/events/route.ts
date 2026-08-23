@@ -145,7 +145,6 @@ export async function POST(req: NextRequest | Request) {
     country,
     startedAt: startedAtCandidate,
     lastActivityAt: now,
-    blobPath: `sessions/${sid}.ndjson.gz`,
   }).onConflictDoNothing().returning({ id: schema.sessions.id });
 
   // session_count_gte rules only make sense once, when the session is

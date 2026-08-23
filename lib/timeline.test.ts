@@ -12,7 +12,7 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a1', startedAt: new Date(Date.now() - 3600_000),
-      endedAt: new Date(), eventCount: 2, durationMs: 45_000, blobPath: '',
+      endedAt: new Date(), eventCount: 2, durationMs: 45_000,
       referrer: 'https://www.google.com/', pageUrl: 'https://x.test/',
     }).returning();
     await db.insert(schema.sessionSummaries).values({
@@ -31,11 +31,13 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
     const { project } = await createOrgWithProject();
     const [s] = await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a1', startedAt: new Date(Date.now() - 3600_000),
-      endedAt: new Date(), eventCount: 2, durationMs: 45_000, blobPath: '', pageUrl: 'https://x.test/',
+      endedAt: new Date(), eventCount: 2, durationMs: 45_000, pageUrl: 'https://x.test/',
     }).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: s.id, digestVersion: 1, narrative: '', insights: [], status: 'done',
-      digest: { steps: [
+      // clicks come from stats.clickCount — the steps array is elided
+      // to 60 entries and would undercount busy sessions.
+      digest: { stats: { clickCount: 2 }, steps: [
         { t: 1, kind: 'click', label: 'Buy', tag: 'button' },
         { t: 2, kind: 'click', label: 'Buy again', tag: 'button' },
         { t: 3, kind: 'nav', to: '/checkout' },
@@ -59,9 +61,9 @@ describe.skipIf(!dbReady)('timelineForProject (DB fetch)', () => {
     const { project } = await createOrgWithProject();
     await db.insert(schema.sessions).values([
       { projectId: project.id, anonId: 'skewed-clock', startedAt: new Date('1978-08-09T00:00:00Z'),
-        endedAt: new Date(), eventCount: 1, durationMs: 1_000, blobPath: '', pageUrl: 'https://x.test/' },
+        endedAt: new Date(), eventCount: 1, durationMs: 1_000, pageUrl: 'https://x.test/' },
       { projectId: project.id, anonId: 'real', startedAt: new Date(Date.now() - 3600_000),
-        endedAt: new Date(), eventCount: 1, durationMs: 1_000, blobPath: '', pageUrl: 'https://x.test/' },
+        endedAt: new Date(), eventCount: 1, durationMs: 1_000, pageUrl: 'https://x.test/' },
     ]);
     const t = await timelineForProject(project.id, 'all');
     // A 1978 anchor would mean decades of weekly buckets; the real anchor

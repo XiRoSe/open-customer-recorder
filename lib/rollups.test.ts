@@ -31,7 +31,7 @@ describe.skipIf(!dbReady)('timeline rollups', () => {
       { anonId: 'a', startedAt: h(3, 120_000), durationMs: 61_000, pageUrl: 'https://x.test/' },
       { anonId: 'b', startedAt: h(3, 300_000), durationMs: 4_000, pageUrl: 'https://x.test/login',
         browser: 'Chrome', country: 'US', userAgent: 'Mozilla/5.0 (iPhone) Mobile' },
-    ].map((v) => ({ projectId: project.id, endedAt: new Date(), eventCount: 2, blobPath: '', ...v }));
+    ].map((v) => ({ projectId: project.id, endedAt: new Date(), eventCount: 2, ...v }));
     const inserted = await db.insert(schema.sessions).values(values).returning();
     await db.insert(schema.sessionSummaries).values({
       sessionId: inserted[2].id, digestVersion: 1, narrative: '', status: 'done',
@@ -83,7 +83,7 @@ describe.skipIf(!dbReady)('timeline rollups', () => {
     const now = Date.now();
     await db.insert(schema.sessions).values({
       projectId: project.id, anonId: 'a', startedAt: new Date(now - 5 * HOUR),
-      endedAt: new Date(), eventCount: 1, durationMs: 1_000, blobPath: '', pageUrl: 'https://x.test/',
+      endedAt: new Date(), eventCount: 1, durationMs: 1_000, pageUrl: 'https://x.test/',
     });
     // Only one hour built out of five → must fall back to raw.
     await buildHourRollup(project.id, now - 5 * HOUR);

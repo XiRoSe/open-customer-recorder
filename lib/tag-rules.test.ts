@@ -80,7 +80,7 @@ describe.skipIf(!dbReady)('tagSession / applyRuleToExistingSessions', () => {
   async function insertSession(projectId: string, anonId: string, startedAt: Date, events: unknown[] = []) {
     const blobData = events.length ? gzBlob(events) : Buffer.alloc(0);
     const [row] = await db.insert(schema.sessions).values({
-      projectId, anonId, startedAt, blobPath: 'x',
+      projectId, anonId, startedAt,
       blobData, blobBytes: blobData.length,
     }).returning();
     return row;

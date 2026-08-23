@@ -5,8 +5,9 @@
 import { sql, and, eq, gte, lt, asc } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import {
-  timelineRowsForProject, deviceOf,
+  timelineRowsForProject, deviceOf, hostOfUrl, pathOfUrl,
   type TimelineData, type TimelineBucket, type TimelineTotals, type TrendChip,
+  type TimelineSessionRow,
 } from './timeline';
 import { categorizeSource, SOURCE_CATEGORIES, type SourceCategory } from './traffic-source';
 
@@ -22,25 +23,11 @@ const addInto = (into: NumMap, from: unknown) => {
   for (const [k, v] of Object.entries((from ?? {}) as NumMap)) into[k] = (into[k] ?? 0) + Number(v);
 };
 
-const hostOf = (url: string | null | undefined): string | null => {
-  if (!url) return null;
-  try { return new URL(url).host.toLowerCase().replace(/^www\./, '') || null; } catch { return null; }
-};
-const pathOf = (url: string | null | undefined): string | null => {
-  if (!url) return null;
-  try {
-    const p = new URL(url).pathname || '/';
-    return p.length > 48 ? `${p.slice(0, 47)}…` : p;
-  } catch { return null; }
-};
-
-/** Recompute one project-hour from raw rows and upsert its rollup. */
-export async function buildHourRollup(projectId: string, hourStartMs: number): Promise<void> {
-  const hourStart = Math.floor(hourStartMs / HOUR_MS) * HOUR_MS;
-  const hourEnd = hourStart + HOUR_MS;
-  const rows = (await timelineRowsForProject(projectId, hourEnd, HOUR_MS))
-    .filter((r) => r.startedAt.getTime() >= hourStart && r.startedAt.getTime() < hourEnd);
-
+/** The ONE hour aggregator — used by both the rollup builder and the
+ * live-tail merge in the reader. A metric added here lands in both
+ * paths by construction; maintaining two copies is how the current
+ * hour silently diverges from history. */
+export function aggregateHourRows(rows: TimelineSessionRow[]) {
   const agg = {
     sessions: 0, engaged: 0, engagedNew: 0, frustrated: 0,
     newVisitorSessions: 0, durationSumMs: 0, clicks: 0, tagged: 0,
@@ -69,8 +56,8 @@ export async function buildHourRollup(projectId: string, hourStartMs: number): P
     bump(agg.byDevice, deviceOf(r.userAgent));
     bump(agg.byBrowser, r.browser);
     bump(agg.byCountry, r.country);
-    bump(agg.byReferrerHost, hostOf(r.referrer));
-    const p = pathOf(r.pageUrl);
+    bump(agg.byReferrerHost, hostOfUrl(r.referrer));
+    const p = pathOfUrl(r.pageUrl);
     if (p) {
       bump(agg.byEntryPath, p);
       const e = agg.byEntryFriction[p] ?? { n: 0, bad: 0 };
@@ -79,6 +66,16 @@ export async function buildHourRollup(projectId: string, hourStartMs: number): P
       agg.byEntryFriction[p] = e;
     }
   }
+  return agg;
+}
+
+/** Recompute one project-hour from raw rows and upsert its rollup. */
+export async function buildHourRollup(projectId: string, hourStartMs: number): Promise<void> {
+  const hourStart = Math.floor(hourStartMs / HOUR_MS) * HOUR_MS;
+  const hourEnd = hourStart + HOUR_MS;
+  const rows = (await timelineRowsForProject(projectId, hourEnd, HOUR_MS))
+    .filter((r) => r.startedAt.getTime() >= hourStart && r.startedAt.getTime() < hourEnd);
+  const agg = aggregateHourRows(rows);
 
   await db.insert(schema.timelineRollups)
     .values({ projectId, hourStart: new Date(hourStart), ...agg })
@@ -148,29 +145,11 @@ export async function timelineFromRollups(
     .orderBy(asc(schema.timelineRollups.hourStart))) as RollupRow[];
   if (expectedHours === 0 || rollups.length < expectedHours) return null; // coverage gap → raw
 
-  // Live tail: the current partial hour, raw.
+  // Live tail: the current partial hour, raw — through the SAME
+  // aggregator as the builder.
   const tailRows = (await timelineRowsForProject(projectId, windowEnd, windowEnd - currentHour || 1))
     .filter((r) => r.startedAt.getTime() >= currentHour && r.startedAt.getTime() < windowEnd);
-  const tail = { sessions: 0, engaged: 0, engagedNew: 0, frustrated: 0, newVisitorSessions: 0, durationSumMs: 0, clicks: 0, tagged: 0, bySource: {} as NumMap, clicksByDevice: {} as NumMap, frictionByKind: {} as NumMap, byTag: {} as NumMap, byDevice: {} as NumMap, byBrowser: {} as NumMap, byCountry: {} as NumMap, byReferrerHost: {} as NumMap, byEntryPath: {} as NumMap, hourStart: new Date(currentHour), byEntryFriction: {} };
-  for (const r of tailRows) {
-    tail.sessions++;
-    const isNew = r.firstSeenAt.getTime() === r.startedAt.getTime();
-    if ((r.durationMs ?? 0) >= 30_000) { tail.engaged++; if (isNew) tail.engagedNew++; }
-    if (r.frustrated) tail.frustrated++;
-    if (isNew) tail.newVisitorSessions++;
-    tail.durationSumMs += r.durationMs ?? 0;
-    tail.clicks += r.clicks ?? 0;
-    if ((r.tags ?? []).length > 0) tail.tagged++;
-    bump(tail.bySource, categorizeSource(r.referrer, r.pageUrl));
-    bump(tail.clicksByDevice, deviceOf(r.userAgent), r.clicks ?? 0);
-    for (const k of r.insightKinds ?? []) bump(tail.frictionByKind, k);
-    for (const tag of r.tags ?? []) bump(tail.byTag, tag.name);
-    bump(tail.byDevice, deviceOf(r.userAgent));
-    bump(tail.byBrowser, r.browser);
-    bump(tail.byCountry, r.country);
-    bump(tail.byReferrerHost, hostOf(r.referrer));
-    bump(tail.byEntryPath, pathOf(r.pageUrl));
-  }
+  const tail = { ...aggregateHourRows(tailRows), hourStart: new Date(currentHour) };
   const hours: RollupRow[] = [...rollups, tail as unknown as RollupRow];
 
   const bucketCount = Math.ceil((windowEnd - alignedStart) / bucketMs);
@@ -247,6 +226,19 @@ export async function timelineFromRollups(
   return { buckets, totals, trends, windowStart: alignedStart, windowEnd, bucketMs, tagMeta };
 }
 
+/** The ONE worst-friction-entry rule (≥5 sessions, ≥20% friction) —
+ * shared by the raw-rows path (Overview) and the rollup path. */
+export function pickWorstEntry(byPath: Map<string, { n: number; bad: number }>):
+  { path: string; rate: number; sessions: number } | null {
+  let best: { path: string; rate: number; sessions: number } | null = null;
+  for (const [path, { n, bad }] of byPath) {
+    if (n < 5) continue;
+    const rate = bad / n;
+    if (rate >= 0.2 && (!best || rate > best.rate)) best = { path, rate: Math.round(rate * 100), sessions: n };
+  }
+  return best;
+}
+
 /** Worst friction entry page from rollups — the Overview's callout when
  * the window was served from rollups instead of raw rows. */
 export async function frictionEntryFromRollups(
@@ -267,11 +259,22 @@ export async function frictionEntryFromRollups(
       byPath.set(path, e);
     }
   }
-  let best: { path: string; rate: number; sessions: number } | null = null;
-  for (const [path, { n, bad }] of byPath) {
-    if (n < 5) continue;
-    const rate = bad / n;
-    if (rate >= 0.2 && (!best || rate > best.rate)) best = { path, rate: Math.round(rate * 100), sessions: n };
+  return pickWorstEntry(byPath);
+}
+
+/** Deletion IS the invalidation mechanism: the scheduler's missing-hour
+ * scan rebuilds anything deleted here. Pass hours to target specific
+ * project-hours, or omit to invalidate the project's whole history
+ * (tag-rule retro-apply, digest-version bumps). */
+export async function invalidateRollups(projectId: string, hourStarts?: number[]): Promise<void> {
+  if (hourStarts && hourStarts.length === 0) return;
+  if (hourStarts) {
+    await db.execute(sql`
+      DELETE FROM ${schema.timelineRollups}
+      WHERE project_id = ${projectId}
+        AND hour_start = ANY(${hourStarts.map((h) => new Date(h).toISOString())}::timestamptz[])
+    `);
+  } else {
+    await db.delete(schema.timelineRollups).where(eq(schema.timelineRollups.projectId, projectId));
   }
-  return best;
 }

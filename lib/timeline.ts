@@ -6,7 +6,7 @@
 import { sql, and, eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
-import { llmBaseUrl } from './llm-service';
+import { llmBaseUrl, llmChat } from './llm-service';
 import { categorizeSource, SOURCE_CATEGORIES, SOURCE_META, type SourceCategory } from './traffic-source';
 
 export const TIMELINE_RANGES: Record<string, { windowMs: number; bucketMs: number; label: string }> = {
@@ -46,12 +46,12 @@ export function deviceOf(userAgent: string | null | undefined): 'mobile' | 'tabl
   return 'desktop';
 }
 
-const hostOfUrl = (url: string | null | undefined): string | null => {
+export const hostOfUrl = (url: string | null | undefined): string | null => {
   if (!url) return null;
   try { return new URL(url).host.toLowerCase().replace(/^www\./, '') || null; } catch { return null; }
 };
 
-const pathOfUrl = (url: string | null | undefined): string | null => {
+export const pathOfUrl = (url: string | null | undefined): string | null => {
   if (!url) return null;
   try {
     const p = new URL(url).pathname || '/';
@@ -266,9 +266,10 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
            ) AS frustrated,
            (SELECT ss2.insights FROM ${schema.sessionSummaries} ss2 WHERE ss2.session_id = s.id LIMIT 1) AS insights,
            coalesce((
-             SELECT count(*)::int FROM ${schema.sessionSummaries} ss3,
-                    jsonb_array_elements(ss3.digest->'steps') step
-             WHERE ss3.session_id = s.id AND step->>'kind' = 'click'
+             -- The digest's stats carry the TRUE click count; the steps
+             -- array is elided to 60 entries and would undercount.
+             SELECT (ss3.digest->'stats'->>'clickCount')::int
+             FROM ${schema.sessionSummaries} ss3 WHERE ss3.session_id = s.id
            ), 0) AS clicks,
            (SELECT jsonb_agg(jsonb_build_object('name', tr.name, 'color', tr.color))
             FROM ${schema.sessionTags} st
@@ -442,10 +443,18 @@ export async function refreshTimelineAnalyses(fetchFn: typeof fetch = fetch): Pr
   let refreshed = 0;
   for (const p of projects) {
     for (const rangeKey of Object.keys(TIMELINE_RANGES)) {
-      const [existing] = await db.select({ builtAt: schema.timelineAnalyses.builtAt, patterns: schema.timelineAnalyses.patterns })
-        .from(schema.timelineAnalyses)
-        .where(and(eq(schema.timelineAnalyses.projectId, p.id), eq(schema.timelineAnalyses.rangeKey, rangeKey)));
-      if (existing && existing.patterns !== null && Date.now() - existing.builtAt.getTime() < ANALYSIS_STALE_MS) continue;
+      // Atomic claim: bump built_at only when the row is stale (or has
+      // no patterns yet), so two replicas never both run the LLM pass.
+      const claim = await db.execute<{ id: string }>(sql`
+        INSERT INTO ${schema.timelineAnalyses} (project_id, range_key, analysis)
+        VALUES (${p.id}, ${rangeKey}, '')
+        ON CONFLICT (project_id, range_key) DO UPDATE SET built_at = now()
+        WHERE ${schema.timelineAnalyses}.patterns IS NULL
+           OR ${schema.timelineAnalyses}.built_at < now() - interval '6 hours'
+        RETURNING id
+      `);
+      const claimed: { id: string }[] = Array.isArray(claim) ? claim : (claim as unknown as { rows: { id: string }[] }).rows ?? [];
+      if (claimed.length === 0) continue; // fresh, or another replica owns it
       const data = await timelineForProject(p.id, rangeKey);
       if (data.totals.sessions === 0) continue;
       const input = [
@@ -456,27 +465,8 @@ export async function refreshTimelineAnalyses(fetchFn: typeof fetch = fetch): Pr
           `Spike at ${new Date(b.start).toISOString()}: ${b.total} sessions (${b.spike!.factor}x normal), mostly ${SOURCE_META[b.spike!.dominant].label}.`)),
       ].join('\n');
       try {
-        const chat = async (system: string, user: string, maxTokens: number): Promise<string> => {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 60_000);
-          try {
-            const res = await fetchFn(`${baseUrl.replace(/\/$/, '')}/v1/chat/completions`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              signal: ctrl.signal,
-              body: JSON.stringify({
-                messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-                max_tokens: maxTokens,
-                temperature: 0.3,
-              }),
-            });
-            if (!res.ok) throw new Error(`summarizer ${res.status}`);
-            const json = await res.json() as { choices?: { message?: { content?: string } }[] };
-            return json.choices?.[0]?.message?.content?.trim() ?? '';
-          } finally {
-            clearTimeout(timer);
-          }
-        };
+        const chat = async (system: string, user: string, maxTokens: number): Promise<string> =>
+          (await llmChat({ system, user, maxTokens, fetchFn })) ?? '';
 
         const analysis = await chat(
           'You are an expert web-traffic analyst. Given period metrics for a website, write a concise 2-3 sentence read: what changed in this window, the likely driver, and the single most useful implication. Plain text, no preamble.',

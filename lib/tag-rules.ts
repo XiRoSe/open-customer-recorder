@@ -71,6 +71,18 @@ export async function tagSession(sessionId: string, ruleIds: string[]): Promise<
  * aren't blind to a new rule.
  */
 export async function applyRuleToExistingSessions(rule: TagRule): Promise<number> {
+  const matched = await applyRuleInner(rule);
+  if (matched > 0) {
+    // Retroactive tagging mutates history — stale rollup hours must be
+    // rebuilt or the all-time tag counts silently disagree with raw.
+    const { invalidateRollups } = await import('./rollups');
+    await invalidateRollups(rule.projectId).catch((e) =>
+      console.warn('[tag-rules] rollup invalidation failed', e instanceof Error ? e.message : e));
+  }
+  return matched;
+}
+
+async function applyRuleInner(rule: TagRule): Promise<number> {
   if (rule.kind === 'session_count_gte') {
     const threshold = parseInt(rule.value, 10);
     if (!Number.isFinite(threshold)) return 0;

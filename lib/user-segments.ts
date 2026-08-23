@@ -10,7 +10,7 @@ import { kmeans } from 'ml-kmeans';
 import { sql, and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { getAppSettings } from './app-settings';
-import { llmBaseUrl } from './llm-service';
+import { llmChat } from './llm-service';
 import { embedTexts, type EmbedFn } from './embeddings';
 import { pca2d } from './pca';
 import type { ProfileFacets } from './user-profiles';
@@ -159,29 +159,11 @@ export function representatives(vectors: number[][], result: ClusterResult, perC
 // --- LLM: segment naming + dimension analysis --------------------------------
 
 async function llmCall(system: string, user: string, fetchFn: typeof fetch, maxTokens: number): Promise<string | null> {
-  const baseUrl = llmBaseUrl();
-  if (!baseUrl) return null;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), NAME_TIMEOUT_MS);
   try {
-    const res = await fetchFn(`${baseUrl.replace(/\/$/, '')}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      signal: ctrl.signal,
-      body: JSON.stringify({
-        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        max_tokens: maxTokens,
-        temperature: 0.3,
-      }),
-    });
-    if (!res.ok) throw new Error(`summarizer ${res.status}`);
-    const json = await res.json() as { choices?: { message?: { content?: string } }[] };
-    return json.choices?.[0]?.message?.content?.trim() || null;
+    return await llmChat({ system, user, maxTokens, timeoutMs: NAME_TIMEOUT_MS, fetchFn });
   } catch (e) {
     console.warn('[segments] llm call failed', e instanceof Error ? e.message : e);
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -214,13 +196,23 @@ async function analyzeDimension(dimension: Dimension, cohortSize: number, segs: 
 
 interface ProfileRow { id: string; visitorKey: string; profileText: string; facets: ProfileFacets | null }
 
+interface DimensionComputation {
+  dimension: Dimension;
+  named: { name: string; description: string; analysis: string }[];
+  sizes: Record<number, number>;
+  analysis: string;
+  perProfile: Map<string, { label: number; x: number; y: number }>;
+}
+
+/** Pure compute (embeddings + k-means + PCA + LLM naming) — writes
+ * nothing. All results are swapped into the DB in ONE transaction by
+ * the caller, so a mid-run failure can never blank the Clusters UI. */
 async function clusterOneDimension(
-  projectId: string,
   dimension: Dimension,
   items: { profile: ProfileRow; text: string }[],
   embedFn: EmbedFn,
   fetchFn: typeof fetch,
-): Promise<Map<string, { segmentId: string; x: number; y: number }>> {
+): Promise<DimensionComputation> {
   const vectors = await embedFn(items.map((i) => i.text));
   const result = clusterVectors(vectors);
   const reps = representatives(vectors, result);
@@ -230,24 +222,14 @@ async function clusterOneDimension(
     return fromLlm ?? { name: `Segment ${label + 1}`, description: '', analysis: '' };
   }));
   const sizes = result.labels.reduce<Record<number, number>>((acc, l) => { acc[l] = (acc[l] ?? 0) + 1; return acc; }, {});
-  const inserted = await db.insert(schema.userSegments).values(
-    named.map((n, label) => ({ projectId, dimension, name: n.name, description: n.description, analysis: n.analysis, size: sizes[label] ?? 0 })),
-  ).returning({ id: schema.userSegments.id });
-
   const analysis = await analyzeDimension(dimension, items.length, named.map((n, label) => ({ ...n, size: sizes[label] ?? 0 })), fetchFn);
-  await db.insert(schema.dimensionAnalyses)
-    .values({ projectId, dimension, analysis })
-    .onConflictDoUpdate({
-      target: [schema.dimensionAnalyses.projectId, schema.dimensionAnalyses.dimension],
-      set: { analysis, builtAt: new Date() },
-    });
 
   const coords = pca2d(vectors);
-  const out = new Map<string, { segmentId: string; x: number; y: number }>();
+  const perProfile = new Map<string, { label: number; x: number; y: number }>();
   items.forEach((item, i) => {
-    out.set(item.profile.id, { segmentId: inserted[result.labels[i]].id, x: coords[i][0], y: coords[i][1] });
+    perProfile.set(item.profile.id, { label: result.labels[i], x: coords[i][0], y: coords[i][1] });
   });
-  return out;
+  return { dimension, named, sizes, analysis, perProfile };
 }
 
 /** Recluster every project whose profiles changed: each facet dimension
@@ -283,42 +265,70 @@ export async function runClusteringOnce(embedFn: EmbedFn = embedTexts, fetchFn: 
       .map((p) => ({ ...p, facets: (p.facets ?? null) as ProfileFacets | null }));
     if (profiles.length < MIN_PROFILES_TO_CLUSTER) continue;
 
-    // Replace the project's segments wholesale (all dimensions).
-    await db.delete(schema.userSegments).where(eq(schema.userSegments.projectId, projectId));
-
-    // Facet dimensions.
-    const facetPoints = new Map<FacetDimension, Map<string, { segmentId: string; x: number; y: number }>>();
+    // Compute everything first — embeddings and LLM naming are slow and
+    // fallible, and none of it may touch the DB yet.
+    const facetComputations: DimensionComputation[] = [];
     for (const dim of FACET_DIMENSIONS) {
       const items = profiles.filter((p) => p.facets?.[dim]).map((p) => ({ profile: p, text: p.facets![dim]! }));
       if (items.length < MIN_PROFILES_TO_CLUSTER) continue;
-      const points = await clusterOneDimension(projectId, dim, items, embedFn, fetchFn);
-      facetPoints.set(dim, points);
-      for (const [profileId, pt] of points) {
-        await db.insert(schema.profileDimensionPoints)
-          .values({ profileId, dimension: dim, segmentId: pt.segmentId, x: pt.x, y: pt.y })
+      facetComputations.push(await clusterOneDimension(dim, items, embedFn, fetchFn));
+    }
+    const overall = await clusterOneDimension('overall',
+      profiles.map((p) => ({ profile: p, text: p.profileText })), embedFn, fetchFn);
+
+    // Swap old → new atomically: a failure anywhere rolls back to the
+    // previous clustering instead of leaving the project blank.
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.userSegments).where(eq(schema.userSegments.projectId, projectId));
+
+      const segmentIds = new Map<Dimension, string[]>();
+      for (const comp of [...facetComputations, overall]) {
+        const inserted = await tx.insert(schema.userSegments).values(
+          comp.named.map((n, label) => ({
+            projectId, dimension: comp.dimension,
+            name: n.name, description: n.description, analysis: n.analysis,
+            size: comp.sizes[label] ?? 0,
+          })),
+        ).returning({ id: schema.userSegments.id });
+        segmentIds.set(comp.dimension, inserted.map((r) => r.id));
+        await tx.insert(schema.dimensionAnalyses)
+          .values({ projectId, dimension: comp.dimension, analysis: comp.analysis })
           .onConflictDoUpdate({
-            target: [schema.profileDimensionPoints.profileId, schema.profileDimensionPoints.dimension],
-            set: { segmentId: pt.segmentId, x: pt.x, y: pt.y },
+            target: [schema.dimensionAnalyses.projectId, schema.dimensionAnalyses.dimension],
+            set: { analysis: comp.analysis, builtAt: new Date() },
           });
       }
-    }
 
-    // Overall: cluster the full profile text; position = average of the
-    // visitor's facet points where available.
-    const overall = await clusterOneDimension(projectId, 'overall',
-      profiles.map((p) => ({ profile: p, text: p.profileText })), embedFn, fetchFn);
-    for (const p of profiles) {
-      const own = overall.get(p.id)!;
-      const facetPts = FACET_DIMENSIONS.map((d) => facetPoints.get(d)?.get(p.id)).filter((v): v is NonNullable<typeof v> => Boolean(v));
-      const x = facetPts.length >= 2 ? facetPts.reduce((s, v) => s + v.x, 0) / facetPts.length : own.x;
-      const y = facetPts.length >= 2 ? facetPts.reduce((s, v) => s + v.y, 0) / facetPts.length : own.y;
-      await db.update(schema.userProfiles)
-        .set({ segmentId: own.segmentId, mapX: x, mapY: y })
-        .where(eq(schema.userProfiles.id, p.id));
-    }
+      for (const comp of facetComputations) {
+        const ids = segmentIds.get(comp.dimension)!;
+        for (const [profileId, pt] of comp.perProfile) {
+          await tx.insert(schema.profileDimensionPoints)
+            .values({ profileId, dimension: comp.dimension, segmentId: ids[pt.label], x: pt.x, y: pt.y })
+            .onConflictDoUpdate({
+              target: [schema.profileDimensionPoints.profileId, schema.profileDimensionPoints.dimension],
+              set: { segmentId: ids[pt.label], x: pt.x, y: pt.y },
+            });
+        }
+      }
+
+      // Overall: position = average of the visitor's facet points where
+      // available.
+      const overallIds = segmentIds.get('overall')!;
+      for (const p of profiles) {
+        const own = overall.perProfile.get(p.id)!;
+        const facetPts = facetComputations
+          .map((c) => c.perProfile.get(p.id))
+          .filter((v): v is NonNullable<typeof v> => Boolean(v));
+        const x = facetPts.length >= 2 ? facetPts.reduce((s, v) => s + v.x, 0) / facetPts.length : own.x;
+        const y = facetPts.length >= 2 ? facetPts.reduce((s, v) => s + v.y, 0) / facetPts.length : own.y;
+        await tx.update(schema.userProfiles)
+          .set({ segmentId: overallIds[own.label], mapX: x, mapY: y })
+          .where(eq(schema.userProfiles.id, p.id));
+      }
+    });
 
     reclustered++;
-    console.log(`[segments] reclustered project ${projectId}: ${1 + facetPoints.size} dimensions over ${profiles.length} profiles`);
+    console.log(`[segments] reclustered project ${projectId}: ${1 + facetComputations.length} dimensions over ${profiles.length} profiles`);
   }
   return reclustered;
 }

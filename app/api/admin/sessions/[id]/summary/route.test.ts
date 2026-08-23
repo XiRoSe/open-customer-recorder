@@ -27,7 +27,7 @@ beforeEach(async () => {
 async function seed() {
   const { org, project } = await createOrgWithProject();
   const [s] = await db.insert(schema.sessions).values({
-    projectId: project.id, anonId: 'a1', startedAt: new Date(), endedAt: new Date(), eventCount: 1, blobPath: '',
+    projectId: project.id, anonId: 'a1', startedAt: new Date(), endedAt: new Date(), eventCount: 1,
   }).returning();
   await db.insert(schema.sessionSummaries).values({
     sessionId: s.id, digest: {}, digestVersion: 1, narrative: '0:00 Landed on /', insights: [],

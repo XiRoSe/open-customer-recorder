@@ -17,7 +17,7 @@ afterEach(() => { delete process.env.SUMMARIZER_URL; });
 async function seedPending(intent = 0) {
   const { project } = await createOrgWithProject();
   const [s] = await db.insert(schema.sessions).values({
-    projectId: project.id, anonId: `a${intent}`, startedAt: new Date(), endedAt: new Date(), eventCount: 1, blobPath: '',
+    projectId: project.id, anonId: `a${intent}`, startedAt: new Date(), endedAt: new Date(), eventCount: 1,
   }).returning();
   const [row] = await db.insert(schema.sessionSummaries).values({
     sessionId: s.id, digest: { steps: [], insights: [], stats: {} }, digestVersion: 1,
@@ -94,8 +94,7 @@ async function seedVisualPending() {
   const { project } = await createOrgWithProject();
   const blob = gzipSync(Buffer.from(JSON.stringify({ type: 4, timestamp: T0, data: { href: 'https://x.test/' } }) + '\n'));
   const [s] = await db.insert(schema.sessions).values({
-    projectId: project.id, anonId: 'vis', startedAt: new Date(T0), endedAt: new Date(), eventCount: 1,
-    blobPath: '', blobBytes: blob.length, blobData: blob,
+    projectId: project.id, anonId: 'vis', startedAt: new Date(T0), endedAt: new Date(), eventCount: 1, blobBytes: blob.length, blobData: blob,
   }).returning();
   const [row] = await db.insert(schema.sessionSummaries).values({
     sessionId: s.id, digest: VISUAL_DIGEST, digestVersion: 1,
@@ -155,7 +154,7 @@ describe.skipIf(!dbReady)('drainSummaryQueue ordering', () => {
     const { project } = await createOrgWithProject();
     const mkRow = async (anon: string, createdAt: Date, marker: string) => {
       const [s] = await db.insert(schema.sessions).values({
-        projectId: project.id, anonId: anon, startedAt: new Date(), endedAt: new Date(), eventCount: 1, blobPath: '',
+        projectId: project.id, anonId: anon, startedAt: new Date(), endedAt: new Date(), eventCount: 1,
       }).returning();
       await db.insert(schema.sessionSummaries).values({
         sessionId: s.id, digest: { marker }, digestVersion: 1, narrative: '', insights: [], status: 'pending', createdAt,

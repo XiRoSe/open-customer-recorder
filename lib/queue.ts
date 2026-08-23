@@ -49,34 +49,33 @@ export function getQueue(name: QueueName): Queue | null {
 }
 
 /** Enqueue one job per id, deduped by jobId — re-enqueueing a pending
- * id is a no-op while its job still exists. Priority: newer first. */
+ * id is a no-op while its job still exists. No priorities: workers are
+ * row-agnostic and claim newest-first from the DB regardless of job
+ * order, so BullMQ's prioritized set would be dead weight. */
 export async function enqueueSignals(name: QueueName, ids: { id: string; ageMinutes?: number }[]): Promise<number> {
   const q = getQueue(name);
   if (!q || ids.length === 0) return 0;
-  await q.addBulk(ids.map(({ id, ageMinutes }) => ({
+  await q.addBulk(ids.map(({ id }) => ({
     name: 'work',
     data: { id },
-    opts: {
-      jobId: id,
-      // BullMQ: lower priority number = processed sooner.
-      priority: Math.min(2_000_000, Math.max(1, Math.round(ageMinutes ?? 1))),
-    },
+    opts: { jobId: id },
   })));
   return ids.length;
 }
 
-/** Depths for the Infra page; null when queues are off. */
-export async function queueDepths(): Promise<Record<QueueName, { waiting: number; active: number; failed: number }> | null> {
+/** Depths for the Infra page; null when queues are off. Failed counts
+ * live in the DB status columns, not here — jobs are removed on
+ * completion either way. */
+export async function queueDepths(): Promise<Record<QueueName, { waiting: number; active: number }> | null> {
   if (!queuesEnabled()) return null;
-  const out = {} as Record<QueueName, { waiting: number; active: number; failed: number }>;
+  const out = {} as Record<QueueName, { waiting: number; active: number }>;
   for (const name of QUEUE_NAMES) {
     const q = getQueue(name);
     if (!q) return null;
-    const c = await q.getJobCounts('waiting', 'active', 'failed', 'delayed', 'prioritized');
+    const c = await q.getJobCounts('waiting', 'active', 'delayed', 'prioritized');
     out[name] = {
       waiting: (c.waiting ?? 0) + (c.delayed ?? 0) + (c.prioritized ?? 0),
       active: c.active ?? 0,
-      failed: c.failed ?? 0,
     };
   }
   return out;

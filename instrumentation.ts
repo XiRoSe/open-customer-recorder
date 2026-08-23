@@ -33,6 +33,9 @@ export async function register() {
   // deduped job signals), without it the original drain loops run.
   // Either way the DB rows stay the source of truth.
   let sweepInFlight = false;
+  // Set by the queue block below: enqueue signals immediately after a
+  // sweep lands new rows, instead of waiting for the next reconcile.
+  let afterSweep: (() => Promise<void>) | null = null;
   const sweepCycle = async () => {
     if (sweepInFlight) return;
     sweepInFlight = true;
@@ -40,6 +43,8 @@ export async function register() {
     catch (e) { console.warn('[summaries] sweep failed', e); }
     try { await sweepUserProfilesOnce(); }
     catch (e) { console.warn('[profiles] sweep failed', e); }
+    try { await afterSweep?.(); }
+    catch (e) { console.warn('[queue] post-sweep enqueue failed', e); }
     finally { sweepInFlight = false; }
   };
   resetStuckProcessing().catch((e) => console.warn('[summaries] reset failed', e));
@@ -63,15 +68,29 @@ export async function register() {
       .on('error', (e) => console.warn('[queue] aggregation worker error', e.message));
 
     // Reconciler: due DB rows → deduped job signals. Also the recovery
-    // path if Redis lost jobs — the DB always knows what's owed.
+    // path if Redis lost jobs — the DB always knows what's owed. When
+    // Redis itself is down, degrade to one direct drain pass so an
+    // outage never stalls AI processing (the DB claims make this safe
+    // alongside workers that come back).
+    let fallbackInFlight = false;
     const reconcile = async () => {
       try {
         await enqueueSignals('summaries', await duePendingSummaries());
         await enqueueSignals('profiles', await duePendingProfiles());
-      } catch (e) { console.warn('[queue] reconcile failed', e); }
+      } catch (e) {
+        console.warn('[queue] reconcile failed — draining directly', e instanceof Error ? e.message : e);
+        if (fallbackInFlight) return;
+        fallbackInFlight = true;
+        try { await drainSummaryQueue(); await drainUserProfiles(); }
+        catch (e2) { console.warn('[queue] fallback drain failed', e2); }
+        finally { fallbackInFlight = false; }
+      }
     };
     setTimeout(reconcile, 10 * 1000);
     setInterval(reconcile, 60 * 1000);
+    // Fresh work should not wait for the next reconcile tick: enqueue
+    // right after each sweep lands new rows.
+    afterSweep = reconcile;
 
     // Aggregation scheduler: rollup jobs for missing + recent hours.
     const { db, schema } = await import('./lib/db');

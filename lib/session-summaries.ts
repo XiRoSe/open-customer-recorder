@@ -19,10 +19,13 @@ export async function runSummarySweepOnce(): Promise<number> {
   const { summariesEnabled } = await getAppSettings();
   if (!summariesEnabled) return 0;
   const cutoff = new Date(Date.now() - ABANDONED_AFTER_MS);
+  // Metadata only — blobs are fetched one row at a time below, so a
+  // batch of 50 never holds 50 decompressed replays in memory at once.
   const candidates = await db
     .select({
       id: schema.sessions.id,
-      blobData: schema.sessions.blobData,
+      projectId: schema.sessions.projectId,
+      startedAt: schema.sessions.startedAt,
       pageUrl: schema.sessions.pageUrl,
       referrer: schema.sessions.referrer,
       country: schema.sessions.country,
@@ -38,11 +41,20 @@ export async function runSummarySweepOnce(): Promise<number> {
     ))
     .limit(SUMMARY_BATCH);
 
+  // Hours whose rollups this sweep invalidates: a digest landing for a
+  // session that started >2h ago (late end, or a digest-version
+  // re-extraction) changes history the rollup refresher never revisits.
+  const staleHours = new Map<string, Set<number>>();
+  const HOUR_MS = 3600_000;
+  const lateCutoff = Date.now() - 2 * HOUR_MS;
+
   let written = 0;
   for (const c of candidates) {
     let values: typeof schema.sessionSummaries.$inferInsert;
     try {
-      const ndjson = gunzipSync(c.blobData).toString('utf8');
+      const [blobRow] = await db.select({ blobData: schema.sessions.blobData })
+        .from(schema.sessions).where(eq(schema.sessions.id, c.id)).limit(1);
+      const ndjson = gunzipSync(blobRow.blobData).toString('utf8');
       const digest = extractDigest(ndjson);
       digest.context = {
         ...(c.pageUrl ? { entryUrl: c.pageUrl } : {}),
@@ -65,18 +77,33 @@ export async function runSummarySweepOnce(): Promise<number> {
     }
     // A digest-version bump re-extracts old rows; rows that already have
     // an AI summary keep it (and their status) instead of re-queuing an
-    // LLM call for the whole history.
+    // LLM call for the whole history. Rows currently 'processing' also
+    // keep their status — re-pending one mid-LLM-call would let a second
+    // worker claim it and double-spend.
     const { status: newStatus, ...rest } = values;
     await db.insert(schema.sessionSummaries).values(values)
       .onConflictDoUpdate({
         target: schema.sessionSummaries.sessionId,
         set: {
           ...rest,
-          status: sql`CASE WHEN ${schema.sessionSummaries.intentText} IS NULL THEN ${newStatus} ELSE ${schema.sessionSummaries.status} END`,
+          status: sql`CASE WHEN ${schema.sessionSummaries.intentText} IS NULL AND ${schema.sessionSummaries.status} <> 'processing' THEN ${newStatus} ELSE ${schema.sessionSummaries.status} END`,
           updatedAt: new Date(),
         },
       });
     written++;
+    if (c.startedAt.getTime() < lateCutoff) {
+      const hours = staleHours.get(c.projectId) ?? new Set<number>();
+      hours.add(Math.floor(c.startedAt.getTime() / HOUR_MS) * HOUR_MS);
+      staleHours.set(c.projectId, hours);
+    }
+  }
+
+  if (staleHours.size > 0) {
+    const { invalidateRollups } = await import('./rollups');
+    for (const [projectId, hours] of staleHours) {
+      await invalidateRollups(projectId, [...hours]).catch((e) =>
+        console.warn('[summaries] rollup invalidation failed', projectId, e instanceof Error ? e.message : e));
+    }
   }
   return written;
 }

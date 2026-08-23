@@ -1,7 +1,6 @@
 import { db, schema } from '@/lib/db';
 import { count, eq, and, lt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { deleteSessionBlob } from '@/lib/blob';
 
 /**
  * Ensure the singleton org + default project exist on first boot, AND that
@@ -60,7 +59,6 @@ export async function cleanupZeroEventSessions() {
     .where(and(eq(schema.sessions.eventCount, 0), lt(schema.sessions.createdAt, cutoff)));
   if (stale.length === 0) return;
   for (const s of stale) {
-    await deleteSessionBlob(s.id).catch(() => {});
     await db.delete(schema.sessions).where(eq(schema.sessions.id, s.id));
   }
   console.log(`[bootstrap] cleaned up ${stale.length} zero-event session rows`);

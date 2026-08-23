@@ -39,7 +39,6 @@ export const sessions = pgTable('sessions', {
   browser: text('browser'),
   os: text('os'),
   userAgent: text('user_agent'),
-  blobPath: text('blob_path').notNull().default(''),
   blobBytes: bigint('blob_bytes', { mode: 'number' }).notNull().default(0),
   // Gzipped event blob stored inline so we don't need a Railway volume.
   // Multiple gzip members concatenated — readable as a single decompress.
@@ -47,21 +46,19 @@ export const sessions = pgTable('sessions', {
     dataType() { return 'bytea'; },
   })('blob_data').default(sql`''::bytea`).notNull(),
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow().notNull(),
-  // NULL until an admin opens /sessions/[id] for the first time. Drives
-  // the "unviewed" dot + count in the sessions list.
-  viewedAt: timestamp('viewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   projectStartedIdx: index('sessions_project_started_idx').on(t.projectId, t.startedAt),
   userIdx: index('sessions_user_idx').on(t.projectId, t.userId),
-  anonIdx: index('sessions_anon_idx').on(t.projectId, t.anonId),
+  // NOTE: no (project_id, anon_id) index — it was a strict prefix of
+  // lastActivityIdx (pure write amplification). The visitor-key
+  // expression index lives in migration 0021 (drizzle can't model it).
   lastActivityIdx: index('sessions_last_activity_idx').on(t.projectId, t.anonId, t.lastActivityAt),
 }));
 
 // Per-admin "viewed" tracking. One row per (session, admin) that has been
-// opened. Replaces the global sessions.viewed_at so each admin has independent
-// viewed/unviewed state. admin_email is the per-admin key (auth is env-based;
-// no users table). The legacy sessions.viewed_at column is left unused.
+// opened. admin_email is the per-admin key (auth is env-based; no users
+// table).
 export const sessionViews = pgTable('session_views', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: uuid('session_id').notNull().references(() => sessions.id, { onDelete: 'cascade' }),
@@ -105,6 +102,9 @@ export const sessionTags = pgTable('session_tags', {
 }, (t) => ({
   sessionRuleIdx: uniqueIndex('session_tags_session_rule_idx').on(t.sessionId, t.tagRuleId),
   sessionIdx: index('session_tags_session_idx').on(t.sessionId),
+  // Rule deletions cascade through here — without this, each delete
+  // seq-scans the table.
+  ruleIdx: index('session_tags_rule_idx').on(t.tagRuleId),
 }));
 
 // Anon_ids that should never be recorded — e.g. admin/maintenance
@@ -189,6 +189,9 @@ export const userProfiles = pgTable('user_profiles', {
 }, (t) => ({
   projectVisitorIdx: uniqueIndex('user_profiles_project_visitor_idx').on(t.projectId, t.visitorKey),
   statusIdx: index('user_profiles_status_idx').on(t.status, t.nextRetryAt),
+  // Every clustering run deletes segments wholesale; SET NULL needs this
+  // to avoid a seq scan per deleted segment.
+  segmentIdx: index('user_profiles_segment_idx').on(t.segmentId),
 }));
 
 // Behavioral segments discovered by clustering visitor-profile embeddings
@@ -224,6 +227,8 @@ export const profileDimensionPoints = pgTable('profile_dimension_points', {
   y: doublePrecision('y').notNull(),
 }, (t) => ({
   profileDimIdx: uniqueIndex('profile_dimension_points_profile_dim_idx').on(t.profileId, t.dimension),
+  // Same SET NULL cascade as user_profiles.segment_id.
+  segmentIdx: index('profile_dimension_points_segment_idx').on(t.segmentId),
 }));
 
 // Batch-level analyst read per dimension ("what Source reveals about
