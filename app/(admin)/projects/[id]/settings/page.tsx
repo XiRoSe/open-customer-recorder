@@ -207,6 +207,13 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
             <div className={`text-2xl font-semibold ${infra.llm === 'unreachable' ? 'text-rose-600' : ''}`}>{infra.llm}</div>
             <div className="text-sm text-muted-foreground">LLM service</div>
           </Card>
+          <Card className="p-4" title="Researcher questions answered in the last 24 hours, with the median end-to-end research time (routing + queries + composing).">
+            <div className="text-2xl font-semibold tabular-nums">{infra.researcher.questions24h.toLocaleString()}</div>
+            <div className="text-sm text-muted-foreground">Researcher questions (24h)</div>
+            {infra.researcher.medianRunMs !== null && (
+              <div className="text-xs text-muted-foreground mt-1 tabular-nums">median {fmtDuration(infra.researcher.medianRunMs)} per answer</div>
+            )}
+          </Card>
           <Card className="p-4" title="Live workers holding the clustering queue — the standalone cluster service. 0 means it is down or disconnected from Redis.">
             <div className={`text-2xl font-semibold ${infra.clusterWorkers === 0 ? 'text-rose-600' : ''}`}>
               {infra.clusterWorkers === null ? '—' : infra.clusterWorkers > 0 ? 'connected' : 'no worker'}

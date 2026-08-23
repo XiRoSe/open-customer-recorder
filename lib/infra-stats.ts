@@ -21,6 +21,9 @@ export interface InfraStats {
    * blobs actually live. O(1) catalog read, no table scan. */
   sessionsBytes: number;
   rollups: { count: number; freshestHour: Date | null };
+  /** Researcher usage: answered questions in the last 24h + the median
+   * end-to-end run time (summed step timings from the footprints). */
+  researcher: { questions24h: number; medianRunMs: number | null };
 }
 
 async function llmHealth(): Promise<'connected' | 'unreachable' | 'not set'> {
@@ -54,6 +57,7 @@ export async function infraStats(): Promise<InfraStats> {
     pending: number; processing: number; failed: number; done: number;
     median_ms: number | null; db_bytes: string; sessions_bytes: string;
     rollup_count: number; rollup_freshest: string | null;
+    researcher_answers: number; researcher_median_ms: number | null;
   }
   const res = await db.execute<Row>(sql`
     WITH s AS (
@@ -70,7 +74,15 @@ export async function infraStats(): Promise<InfraStats> {
       pg_database_size(current_database()) AS db_bytes,
       pg_total_relation_size('sessions') AS sessions_bytes,
       (SELECT count(*)::int FROM ${schema.timelineRollups}) AS rollup_count,
-      (SELECT max(hour_start)::text FROM ${schema.timelineRollups}) AS rollup_freshest
+      (SELECT max(hour_start)::text FROM ${schema.timelineRollups}) AS rollup_freshest,
+      (SELECT count(*)::int FROM ${schema.researcherMessages}
+       WHERE role = 'assistant' AND created_at > now() - interval '24 hours') AS researcher_answers,
+      (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) FROM (
+        SELECT (SELECT sum((f->>'ms')::bigint) FROM jsonb_array_elements(payload->'footprints') f) AS total_ms
+        FROM ${schema.researcherMessages}
+        WHERE role = 'assistant' AND payload IS NOT NULL
+          AND created_at > now() - interval '24 hours'
+      ) rt WHERE total_ms IS NOT NULL) AS researcher_median_ms
   `);
   const rows: Row[] = Array.isArray(res) ? res : (res as unknown as { rows: Row[] }).rows ?? [];
   const r = rows[0];
@@ -94,5 +106,9 @@ export async function infraStats(): Promise<InfraStats> {
     dbBytes: Number(r.db_bytes),
     sessionsBytes: Number(r.sessions_bytes),
     rollups: { count: r.rollup_count, freshestHour: r.rollup_freshest ? new Date(r.rollup_freshest) : null },
+    researcher: {
+      questions24h: r.researcher_answers,
+      medianRunMs: r.researcher_median_ms === null ? null : Number(r.researcher_median_ms),
+    },
   };
 }

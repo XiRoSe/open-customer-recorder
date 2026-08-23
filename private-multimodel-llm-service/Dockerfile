@@ -14,10 +14,14 @@ ADD https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf 
 # THINK_BUDGET=0 / REASONING=off disable Qwen3.5's thinking mode — without
 # them, all max_tokens go to reasoning_content and message.content is empty.
 # (Two names because llama.cpp renamed the env var across versions.)
+# PARALLEL=2 + CTX 8192: two lanes of 4096 each (llama.cpp SPLITS ctx
+# across slots!) — one lane for background summaries, one reserved for
+# the Researcher so a question never waits behind a vision job.
 ENV LLAMA_ARG_HOST=0.0.0.0 \
     LLAMA_ARG_PORT=8080 \
     LLAMA_ARG_MODEL=/models/model.gguf \
-    LLAMA_ARG_CTX_SIZE=4096 \
+    LLAMA_ARG_CTX_SIZE=8192 \
+    LLAMA_ARG_N_PARALLEL=2 \
     LLAMA_ARG_THREADS=4 \
     LLAMA_ARG_THINK_BUDGET=0 \
     LLAMA_ARG_REASONING=off \
