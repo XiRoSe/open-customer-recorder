@@ -3,18 +3,48 @@
 // aggregate reads — the point is to see strain long before users do.
 import { sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
-import { queuesEnabled, queueDepths, type QueueName } from './queue';
+import { queuesEnabled, queueDepths, getQueue, type QueueName } from './queue';
 import { llmBaseUrl } from './llm-service';
 
 export interface InfraStats {
   queuesEnabled: boolean;
-  llmConfigured: boolean;
+  /** 'connected' = /health answered; 'unreachable' = configured but down. */
+  llm: 'connected' | 'unreachable' | 'not set';
+  /** Live BullMQ workers holding the clustering queue (the standalone
+   * cluster service). null when queues are off. */
+  clusterWorkers: number | null;
   queues: Record<QueueName, { waiting: number; active: number; failed: number }> | null;
   summaries: { pending: number; processing: number; failed: number; done: number };
   medianLatencyMs: number | null;   // done in the last 24h
   dbBytes: number;
   blobBytes: number;
   rollups: { count: number; freshestHour: Date | null };
+}
+
+async function llmHealth(): Promise<'connected' | 'unreachable' | 'not set'> {
+  const base = llmBaseUrl();
+  if (!base) return 'not set';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 3_000);
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/health`, { signal: ctrl.signal });
+    return res.ok ? 'connected' : 'unreachable';
+  } catch {
+    return 'unreachable';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function clusterWorkerCount(): Promise<number | null> {
+  const q = getQueue('clustering');
+  if (!q) return null;
+  try {
+    return (await q.getWorkers()).length;
+  } catch (e) {
+    console.warn('[infra] cluster worker check failed', e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 export async function infraStats(): Promise<InfraStats> {
@@ -40,14 +70,19 @@ export async function infraStats(): Promise<InfraStats> {
   const rows: Row[] = Array.isArray(res) ? res : (res as unknown as { rows: Row[] }).rows ?? [];
   const r = rows[0];
 
-  const queues = await queueDepths().catch((e) => {
-    console.warn('[infra] queue depths unavailable', e instanceof Error ? e.message : e);
-    return null;
-  });
+  const [queues, llm, clusterWorkers] = await Promise.all([
+    queueDepths().catch((e) => {
+      console.warn('[infra] queue depths unavailable', e instanceof Error ? e.message : e);
+      return null;
+    }),
+    llmHealth(),
+    clusterWorkerCount(),
+  ]);
 
   return {
     queuesEnabled: queuesEnabled(),
-    llmConfigured: Boolean(llmBaseUrl()),
+    llm,
+    clusterWorkers,
     queues,
     summaries: { pending: r.pending, processing: r.processing, failed: r.failed, done: r.done },
     medianLatencyMs: r.median_ms === null ? null : Number(r.median_ms),
