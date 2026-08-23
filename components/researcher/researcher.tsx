@@ -175,9 +175,13 @@ export function Researcher({ name, email }: { name: string; email: string }) {
           id: `p-${Date.now()}`, role: 'assistant', content: cur.text,
           payload: { blocks: cur.blocks, citations: [], caveat: null, followups: [], footprints: cur.footprints, interrupted: true },
         }]);
+        liveRef.current = null;
+        setLive(null);
+      } else {
+        // Nothing landed (e.g. the server restarted mid-stream) — a
+        // silent vanish is a dead end; surface it with a retry.
+        updateLive({ statusLabel: null, error: 'The connection dropped before I could answer — try again.' });
       }
-      liveRef.current = null;
-      setLive(null);
     }
   }, [projectId, threadId, threadTitle, scrollDown, updateLive]);
 
