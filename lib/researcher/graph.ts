@@ -120,17 +120,33 @@ export async function runResearch(opts: {
         emit({ type: 'tool', name: tool.name, label: tool.label, status: 'error', ms: Date.now() - started });
       }
     }
-    // Tag flow: the draft card renders from the plan + preview count.
-    if (plan.tagDraft) {
+    // Tag flow: the draft card renders from the plan + preview count. When
+    // the model previewed a rule but forgot to fill tag_draft, synthesize
+    // the draft from the preview step — the card must never depend on the
+    // 4B remembering both halves.
+    let draft = plan.tagDraft;
+    if (!draft) {
+      const previewStep = plan.steps.find((s) => s.tool === 'preview_tag_rule');
+      const v = typeof previewStep?.args.value === 'string' ? previewStep.args.value.trim() : '';
+      if (previewStep && v) {
+        draft = {
+          name: `${v.replace(/^\//, '').replace(/[^a-z0-9 _-]/gi, ' ').trim() || 'Matched'} visitors`.slice(0, 60),
+          kind: previewStep.args.kind === 'session_count_gte' ? 'session_count_gte' : 'url_contains',
+          value: v,
+          color: 'blue',
+        };
+      }
+    }
+    if (draft) {
       const preview = outcomes.find((o) => 'tagPreview' in o.facts);
       const p = preview?.facts.tagPreview as { matchCount: number; approx: boolean } | undefined;
       const draftBlock = {
         type: 'tagDraft' as const,
         draftId: nanoid(10),
-        name: plan.tagDraft.name,
-        kind: plan.tagDraft.kind,
-        value: plan.tagDraft.value,
-        color: plan.tagDraft.color,
+        name: draft.name,
+        kind: draft.kind,
+        value: draft.value,
+        color: draft.color,
         matchCount: p?.matchCount ?? 0,
         approx: p?.approx ?? true,
       };
@@ -192,9 +208,17 @@ export async function runResearch(opts: {
   const content = interrupted
     ? finalState.content || ''
     : finalState.content || templateAnswer(plan, finalState.outcomes ?? []);
+  // The model may plan the same tool twice — one chip per distinct query.
+  const seenCites = new Set<string>();
+  const dedupedCitations = citations.filter((c) => {
+    const k = `${c.label}|${c.detail}`;
+    if (seenCites.has(k)) return false;
+    seenCites.add(k);
+    return true;
+  });
   const payload: AssistantPayload = {
     blocks,
-    citations,
+    citations: dedupedCitations,
     caveat: caveats[0] ?? null,
     followups: interrupted ? [] : followupsFor(plan, finalState.outcomes ?? []),
     footprints,

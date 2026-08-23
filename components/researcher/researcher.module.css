@@ -128,8 +128,8 @@
 .viz { margin: 8px 0 2px; display: flex; flex-direction: column; gap: 7px; }
 .vRow { display: grid; grid-template-columns: 100px 1fr 44px; align-items: center; gap: 10px; font-size: 12.5px; }
 .vLab { color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vTrack { height: 6px; border-radius: 99px; background: var(--muted); overflow: hidden; }
-.vFill { height: 100%; border-radius: 99px; background: var(--muted-foreground); width: 0; transition: width .8s cubic-bezier(.22, 1, .36, 1); }
+.vTrack { display: block; height: 6px; border-radius: 99px; background: var(--muted); overflow: hidden; }
+.vFill { display: block; height: 100%; border-radius: 99px; background: var(--muted-foreground); width: 0; transition: width .8s cubic-bezier(.22, 1, .36, 1); }
 .vRowHot .vFill { background: linear-gradient(90deg, var(--foreground), #b08d57); }
 .vVal { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted-foreground); font-weight: 500; }
 .vRowHot .vVal { color: var(--foreground); font-weight: 600; }

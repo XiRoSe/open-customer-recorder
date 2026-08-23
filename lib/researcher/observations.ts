@@ -33,7 +33,8 @@ export async function observationsForProject(projectId: string): Promise<Observa
         : 'How are we trending this week?',
     });
   }
-  if (out.length < 3 && o.segments[0]) {
+  // Skip the segment extra when an attention item already covers segments.
+  if (out.length < 3 && o.segments[0] && !o.attention.some((a) => a.kind === 'segments')) {
     const s = o.segments[0];
     out.push({
       text: `“${s.name}” is the most active segment — {strong} this week.`,

@@ -33,7 +33,8 @@ interface Observation { text: string; strong: string; question: string }
 
 function greetingWord(): string {
   const h = new Date().getHours();
-  return h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening';
+  // 0–5 counts as evening — "Morning" at 1am reads wrong.
+  return h < 6 ? 'Evening' : h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening';
 }
 
 export function Researcher({ name, email }: { name: string; email: string }) {
