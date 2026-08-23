@@ -55,6 +55,23 @@ describe('filterDimsByVisitors', () => {
 });
 
 describe('clustering math', () => {
+  it('k is stable under input reordering (order-sensitive kmeans++ init must not collapse structure)', () => {
+    // Three separated blobs, shuffled deterministically many ways — the
+    // multi-seed split retry has to find k=3 for every ordering.
+    const base = [...cloud(1, 0, 8), ...cloud(0, 1, 8), ...cloud(0.7, 0.7, 8)];
+    for (let s = 0; s < 12; s++) {
+      const shuffled = [...base];
+      // simple LCG shuffle, deterministic per s
+      let seed = s * 2654435761 + 1;
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        const j = seed % (i + 1);
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      expect(clusterVectors(shuffled).k).toBe(3);
+    }
+  });
+
   it('finds k=2 for two clean blobs and separates them', () => {
     const { vectors } = twoBlobs();
     const r = clusterVectors(vectors);

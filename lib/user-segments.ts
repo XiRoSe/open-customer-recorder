@@ -128,18 +128,24 @@ export function clusterVectors(rawVectors: number[][]): ClusterResult {
 
     const members = clusters[candidate];
     const sub = members.map((i) => vectors[i]);
-    const r = kmeans(sub, 2, { initialization: 'kmeans++', seed: 7 });
-    const a = members.filter((_, i) => r.clusters[i] === 0);
-    const b = members.filter((_, i) => r.clusters[i] === 1);
-    let clean = a.length >= MIN_SEGMENT_SIZE && b.length >= MIN_SEGMENT_SIZE;
-    if (clean) {
+    // kmeans++ is input-ORDER-sensitive even with a fixed seed, and the
+    // DB hands rows over in heap order — one unlucky initialization must
+    // not declare a genuinely structured dimension unsplittable (seen in
+    // prod: persona collapsed to k=1 on data that splits at margin 0.15).
+    // Try several seeds; homogeneous data still fails all of them.
+    let split: { a: number[]; b: number[] } | null = null;
+    for (const seed of [7, 13, 42, 101]) {
+      const r = kmeans(sub, 2, { initialization: 'kmeans++', seed });
+      const a = members.filter((_, i) => r.clusters[i] === 0);
+      const b = members.filter((_, i) => r.clusters[i] === 1);
+      if (a.length < MIN_SEGMENT_SIZE || b.length < MIN_SEGMENT_SIZE) continue;
       const within = (meanWithinCos(vectors, a) + meanWithinCos(vectors, b)) / 2;
       const cross = meanCrossCos(vectors, a, b);
-      clean = within - cross >= SPLIT_COS_MARGIN;
+      if (within - cross >= SPLIT_COS_MARGIN) { split = { a, b }; break; }
     }
-    if (!clean) { unsplittable.add(candidate); continue; }
+    if (!split) { unsplittable.add(candidate); continue; }
 
-    clusters.splice(candidate, 1, a, b);
+    clusters.splice(candidate, 1, split.a, split.b);
     unsplittable.clear();
   }
 
