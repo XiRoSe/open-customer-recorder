@@ -10,7 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Strategy: just render children; protected pages check themselves via readSessionCookie + redirect.
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="relative border-b px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-background border-b px-4 py-3 flex items-center justify-between">
         <Link href="/projects" className="font-semibold">Open Customer Recorder</Link>
         {/* centered independently of the flanks' widths */}
         <div className="absolute left-1/2 -translate-x-1/2">

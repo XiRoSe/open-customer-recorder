@@ -26,8 +26,10 @@
 /* --- drawer: in-flow, squeezes the page instead of covering it. Sticky
    below the header so it stays put while the page scrolls. --- */
 .drawer {
-  position: sticky; top: 0; align-self: flex-start;
-  height: 100vh; flex-shrink: 0; overflow: hidden;
+  /* Fills exactly the space under the (sticky) 49px top bar — 100vh here
+     would push the input below the fold. */
+  position: sticky; top: 49px; align-self: flex-start;
+  height: calc(100dvh - 49px); flex-shrink: 0; overflow: hidden;
   width: 0; background: var(--background);
   border-left: 1px solid transparent;
   transition: width .38s cubic-bezier(.22, 1, .36, 1), border-color .38s;
