@@ -8,8 +8,14 @@
  *   Headers:
  *     content-encoding: gzip   (optional; body may be plain ndjson)
  *     content-type: application/x-ndjson
- *     x-mega-end: 1            (optional; final POST of a session, sets ended_at)
+ *     x-ps-end: 1              (optional; final POST of a session, sets ended_at)
  *   Body: ndjson of rrweb events (optionally gzipped)
+ *
+ * x-ps-end replaced the pre-rebrand x-mega-end header. The old name is
+ * still honored (gated by LEGACY_TRACKER_COMPAT, default on) so tracker.js
+ * snippets embedded before the PocketScience rename keep working without
+ * a re-embed — set LEGACY_TRACKER_COMPAT=false once nothing sends it
+ * anymore to drop the fallback.
  *
  * On the FIRST POST for a sid: server creates the session row from the
  * query params + UA + IP. On subsequent POSTs: server just appends the
@@ -36,10 +42,18 @@ const MAX_BYTES_PER_SESSION = 10 * 1024 * 1024; // 10 MB
 // (firstEventTs → lastEventTs), not wall-clock since first POST. Idle gaps don't
 // count, and dashboard duration matches what the player actually scrubs through.
 
+// See the header doc comment above — flip to 'false' once nothing sends
+// the pre-rebrand x-mega-end header anymore.
+const LEGACY_TRACKER_COMPAT = process.env.LEGACY_TRACKER_COMPAT !== 'false';
+
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, OPTIONS',
-  'access-control-allow-headers': 'content-type, content-encoding, x-mega-end',
+  // Both the current and pre-rebrand end-of-session header are always
+  // allowed through CORS preflight, regardless of LEGACY_TRACKER_COMPAT —
+  // that flag only controls whether the legacy header is still HONORED,
+  // not whether the browser is allowed to send it.
+  'access-control-allow-headers': 'content-type, content-encoding, x-ps-end, x-mega-end',
   // The tracker reads the per-project session cap off responses.
   'access-control-expose-headers': 'x-max-session-ms',
 };
@@ -76,7 +90,8 @@ export async function POST(req: NextRequest | Request) {
   const pageUrl = url.searchParams.get('u') || null;
   const referrer = (url.searchParams.get('r') || '').slice(0, 512) || null;
   const clientPageCount = parseInt(url.searchParams.get('p') || '0', 10) || 0;
-  const isEnd = req.headers.get('x-mega-end') === '1';
+  const isEnd = req.headers.get('x-ps-end') === '1'
+    || (LEGACY_TRACKER_COMPAT && req.headers.get('x-mega-end') === '1');
 
   if (!projectKey || !sid || !anonId) {
     return NextResponse.json({ error: 'k, sid, a required' }, { status: 400, headers: CORS });

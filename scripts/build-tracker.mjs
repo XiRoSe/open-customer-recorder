@@ -5,7 +5,7 @@ await esbuild.build({
   bundle: true,
   minify: true,
   format: 'iife',
-  globalName: 'MegaRecorder',
+  globalName: 'PocketScience',
   outfile: 'public/tracker.js',
   target: ['es2020'],
 });

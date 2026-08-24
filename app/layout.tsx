@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Open Customer Recorder",
+  title: "PocketScience",
   description: "Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.",
 };
 

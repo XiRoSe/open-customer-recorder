@@ -22,7 +22,7 @@ export default async function SharedResearchPage(props: { params: Promise<{ toke
           conversation's own max-width), never the scroll container. */}
       <main className={styles.wsMain}>
         <div className={styles.wsHead}>
-          <span className={styles.wsWordmark}>MEGA RECORDER<small>Researcher · shared read-only</small></span>
+          <span className={styles.wsWordmark}>PocketScience<small>Researcher · shared read-only</small></span>
         </div>
         <div style={{ maxWidth: 880, margin: '0 auto', padding: '4px 32px 0', width: '100%' }}>
           <h1 style={{ fontSize: 20, fontWeight: 600 }}>{thread.title}</h1>

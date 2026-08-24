@@ -1,17 +1,17 @@
 {
-  "name": "open-customer-recorder",
+  "name": "pocketscience-oss",
   "version": "0.1.0",
   "private": true,
   "description": "Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Matan Avitan",
-  "homepage": "https://github.com/XiRoSe/open-customer-recorder#readme",
+  "homepage": "https://github.com/XiRoSe/pocketscience-oss#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/XiRoSe/open-customer-recorder.git"
+    "url": "git+https://github.com/XiRoSe/pocketscience-oss.git"
   },
   "bugs": {
-    "url": "https://github.com/XiRoSe/open-customer-recorder/issues"
+    "url": "https://github.com/XiRoSe/pocketscience-oss/issues"
   },
   "keywords": [
     "session-replay",

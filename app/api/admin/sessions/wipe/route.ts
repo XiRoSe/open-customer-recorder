@@ -10,7 +10,7 @@ import { readSessionCookie } from '@/lib/auth';
  *
  * curl -X POST <origin>/api/admin/sessions/wipe \
  *   -H 'x-confirm: yes-delete-all' \
- *   -b 'mega_session=<jwt>'
+ *   -b 'ps_session=<jwt>'
  */
 export async function POST(req: Request) {
   const session = await readSessionCookie();

@@ -16,16 +16,18 @@ function ndjson(events: unknown[]): Buffer {
   return gzipSync(Buffer.from(events.map((e) => JSON.stringify(e)).join('\n') + '\n'));
 }
 
-async function post(projectKey: string, sid: string, opts: { u?: string; events?: unknown[]; anonId?: string }) {
+async function post(projectKey: string, sid: string, opts: { u?: string; events?: unknown[]; anonId?: string; endHeader?: string }) {
   const url = new URL(`http://localhost/api/ingest/v2/events`);
   url.searchParams.set('k', projectKey);
   url.searchParams.set('sid', sid);
   url.searchParams.set('a', opts.anonId ?? 'anon-1');
   if (opts.u) url.searchParams.set('u', opts.u);
   const body = opts.events ? ndjson(opts.events) : Buffer.alloc(0);
+  const headers: Record<string, string> = opts.events ? { 'content-encoding': 'gzip', 'content-type': 'application/x-ndjson' } : {};
+  if (opts.endHeader) headers[opts.endHeader] = '1';
   return POST(new Request(url.toString(), {
     method: 'POST',
-    headers: opts.events ? { 'content-encoding': 'gzip', 'content-type': 'application/x-ndjson' } : {},
+    headers,
     body: opts.events ? new Uint8Array(body) : undefined,
   }));
 }
@@ -215,5 +217,35 @@ describe.skipIf(!dbReady)('POST /api/ingest/v2/events — excluded anon_ids', ()
     });
     const [after] = await db.select({ eventCount: schema.sessions.eventCount }).from(schema.sessions).where(eq(schema.sessions.id, sid));
     expect(after.eventCount).toBe(1); // unchanged — the second batch was dropped
+  });
+});
+
+// LEGACY_TRACKER_COMPAT is read once at module load, so these exercise the
+// default (compat on) behavior — the realistic case, since the flag is an
+// ops-set env var flipped at deploy time, not something a single test run
+// can toggle mid-suite.
+describe.skipIf(!dbReady)('POST /api/ingest/v2/events — end-of-session header', () => {
+  it('sets endedAt via the current x-ps-end header', async () => {
+    const { project } = await createOrgWithProject();
+    const sid = randomUUID();
+    await post(project.projectKey, sid, { u: 'https://example.com/', endHeader: 'x-ps-end' });
+    const [row] = await db.select({ endedAt: schema.sessions.endedAt }).from(schema.sessions).where(eq(schema.sessions.id, sid));
+    expect(row.endedAt).not.toBeNull();
+  });
+
+  it('still honors the pre-rebrand x-mega-end header (compat default on)', async () => {
+    const { project } = await createOrgWithProject();
+    const sid = randomUUID();
+    await post(project.projectKey, sid, { u: 'https://example.com/', endHeader: 'x-mega-end' });
+    const [row] = await db.select({ endedAt: schema.sessions.endedAt }).from(schema.sessions).where(eq(schema.sessions.id, sid));
+    expect(row.endedAt).not.toBeNull();
+  });
+
+  it('leaves endedAt null when neither header is sent', async () => {
+    const { project } = await createOrgWithProject();
+    const sid = randomUUID();
+    await post(project.projectKey, sid, { u: 'https://example.com/' });
+    const [row] = await db.select({ endedAt: schema.sessions.endedAt }).from(schema.sessions).where(eq(schema.sessions.id, sid));
+    expect(row.endedAt).toBeNull();
   });
 });

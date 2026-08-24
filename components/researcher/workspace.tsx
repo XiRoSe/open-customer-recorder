@@ -106,7 +106,7 @@ export function ResearcherWorkspace({ projectId, name, initialThreadId, from }: 
                 {railOpen ? <path d="M16 9l-3 3 3 3" /> : <path d="M13 9l3 3-3 3" />}
               </svg>
             </button>
-            <span className={styles.wsWordmark} style={{ marginLeft: 6 }}>MEGA RECORDER<small>Researcher</small></span>
+            <span className={styles.wsWordmark} style={{ marginLeft: 6 }}>PocketScience<small>Researcher</small></span>
             <div className={styles.wsActions}>
               {shareState === 'copied' && <span className={styles.wsShared}>Link copied ✓</span>}
               <button

@@ -1,4 +1,4 @@
-# Open Customer Recorder
+# PocketScience
 
 **Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.**
 
@@ -15,8 +15,8 @@ Captures real user sessions with [rrweb](https://github.com/rrweb-io/rrweb), sto
 **Prerequisites:** Node.js 20+, a Postgres database.
 
 ```bash
-git clone https://github.com/XiRoSe/open-customer-recorder.git
-cd open-customer-recorder
+git clone https://github.com/XiRoSe/pocketscience-oss.git
+cd pocketscience-oss
 npm install
 cp .env.example .env.local        # edit the values
 npm run db:migrate                # apply schema to your Postgres
@@ -50,10 +50,11 @@ dashboard, then drop one script tag on the pages you want to record:
 | `data-api-origin` | – | **Advanced, rarely needed.** By default, recorded events are sent back to whatever host `src` pointed at above — so this attribute is intentionally left out of the example. Only set it if you serve `tracker.js` itself from a different host than the recorder API (e.g. a CDN in front of the static file). |
 
 That's it — sessions start showing up in the dashboard within a few seconds
-of a visit. `window.MegaRecorder` is exposed for manual `identify()` /
+of a visit. `window.PocketScience` is exposed for manual `identify()` /
 `stop()` calls (see [`lib/tracker.ts`](lib/tracker.ts)); in a bundled app you
 can `import { initRecorder } from './lib/tracker'` directly instead of the
-script tag.
+script tag. `window.MegaRecorder` still works too, as an alias — the pre-rebrand
+name — so nothing embedded before the PocketScience rename breaks.
 
 ---
 
@@ -94,7 +95,7 @@ script tag.
 
 ```
  ┌────────────┐   tracker.js (rrweb)   ┌─────────────────────────────┐
- │ Your site  │ ─────────────────────► │  Open Customer Recorder      │
+ │ Your site  │ ─────────────────────► │  PocketScience               │
  │  + <script>│   POST /api/ingest/... │  (Next.js: ingest + admin)   │
  └────────────┘                        │                              │
                                        │   ┌──────────────────────┐   │
@@ -104,7 +105,7 @@ script tag.
                                        └─────────────────────────────┘
 ```
 
-The tracker uses a small **wire protocol** (kept stable for drop-in script tags): cookie `mega_session`, storage keys `mega_anon_id` / `mega_session_v2`, header `x-mega-end`, mask attribute `data-mega-mask`, global `window.MegaRecorder`.
+The tracker uses a small **wire protocol** (kept stable for drop-in script tags): storage keys `ps_anon_id` / `ps_session_v2`, header `x-ps-end`, mask attribute `data-ps-mask`, global `window.PocketScience`. These replaced pre-rebrand names (`mega_anon_id` / `mega_session_v2` / `x-mega-end` / `data-mega-mask` / `window.MegaRecorder`) — all still honored so a tracker.js snippet embedded before the PocketScience rename keeps working with no re-embed; see `LEGACY_TRACKER_COMPAT` below for the one that's a server-side flag rather than a permanent alias.
 
 ## Configuration
 
@@ -118,6 +119,7 @@ The tracker uses a small **wire protocol** (kept stable for drop-in script tags)
 | `ORG_NAME` | – | Display name for the auto-created org/project (default `My Company`). |
 | `BLOB_DIR` | – | Directory for blob storage when not using inline DB storage. |
 | `APP_ORIGIN` | – | Public origin of the app (cookies etc). |
+| `LEGACY_TRACKER_COMPAT` | – | Whether the ingest endpoint still honors the pre-rebrand `x-mega-end` header alongside `x-ps-end` (default `true`). Set to `false` once nothing sends the old header anymore. |
 | `SUMMARIZER_URL` | – | URL of the [summarizer service](summarizer/README.md) (OpenAI-compatible). Unset = AI intent summaries off; deterministic narratives still work. |
 | `SUMMARIZER_MODEL_LABEL` | – | Label stored with each AI summary (e.g. `qwen3.5-4b-q4km`), useful once you fine-tune. |
 
@@ -129,7 +131,7 @@ The tracker uses a small **wire protocol** (kept stable for drop-in script tags)
 | --- | --- |
 | `default` | Records normally. |
 | `mask_all_inputs` | Masks every `<input>` / `<textarea>` value. |
-| `strict` | Masks all inputs **and** any element carrying `data-mega-mask`. |
+| `strict` | Masks all inputs **and** any element carrying `data-ps-mask` (or the pre-rebrand `data-mega-mask`, still honored). |
 
 ## Deployment
 

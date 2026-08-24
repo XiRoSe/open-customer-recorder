@@ -40,7 +40,7 @@ async function seed() {
 describe.skipIf(!dbReady)('GET/POST /api/admin/sessions/:id/summary', () => {
   it('GET returns the summary row, org-scoped', async () => {
     const { s, token } = await seed();
-    cookieStore.mega_session = token;
+    cookieStore.ps_session = token;
     const res = await GET(
       new Request(`http://localhost/api/admin/sessions/${s.id}/summary`),
       { params: Promise.resolve({ id: s.id }) },
@@ -53,7 +53,7 @@ describe.skipIf(!dbReady)('GET/POST /api/admin/sessions/:id/summary', () => {
 
   it('GET returns null summary when no row exists yet', async () => {
     const { s, token } = await seed();
-    cookieStore.mega_session = token;
+    cookieStore.ps_session = token;
     await db.delete(schema.sessionSummaries).where(eq(schema.sessionSummaries.sessionId, s.id));
     const res = await GET(
       new Request(`http://localhost/api/admin/sessions/${s.id}/summary`),
@@ -64,7 +64,7 @@ describe.skipIf(!dbReady)('GET/POST /api/admin/sessions/:id/summary', () => {
 
   it('POST resets the row to pending with attempts 0', async () => {
     const { s, token } = await seed();
-    cookieStore.mega_session = token;
+    cookieStore.ps_session = token;
     const res = await POST(
       new Request(`http://localhost/api/admin/sessions/${s.id}/summary`, { method: 'POST' }),
       { params: Promise.resolve({ id: s.id }) },

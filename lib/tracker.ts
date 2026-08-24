@@ -26,8 +26,14 @@ interface PersistedState {
   cap?: number;
 }
 
-const ANON_KEY = 'mega_anon_id';
-const SESSION_KEY = 'mega_session_v2';
+const ANON_KEY = 'ps_anon_id';
+const SESSION_KEY = 'ps_session_v2';
+// Pre-rebrand key names — a returning visitor's browser may still hold
+// state under these from before the PocketScience rename. Read once as a
+// fallback so an in-progress session/identity isn't silently dropped;
+// everything is written back under the new keys going forward.
+const LEGACY_ANON_KEY = 'mega_anon_id';
+const LEGACY_SESSION_KEY = 'mega_session_v2';
 // Resume window matches MAX_SESSION_DURATION_MS so a restored session
 // can never outlive the cap (startedAt is preserved on resume).
 const SESSION_TTL_MS = 5 * 60 * 1000;
@@ -44,11 +50,11 @@ const MAX_KEEPALIVE_BYTES = 60_000;
 
 function getOrCreateAnonId(): string {
   try {
-    let id = localStorage.getItem(ANON_KEY);
+    let id = localStorage.getItem(ANON_KEY) || localStorage.getItem(LEGACY_ANON_KEY);
     if (!id) {
       id = `anon-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
-      localStorage.setItem(ANON_KEY, id);
     }
+    localStorage.setItem(ANON_KEY, id);
     return id;
   } catch {
     return `anon-${Math.random().toString(36).slice(2, 10)}`;
@@ -77,7 +83,7 @@ function uuid(): string {
 
 function loadPersisted(): PersistedState | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = sessionStorage.getItem(SESSION_KEY) || sessionStorage.getItem(LEGACY_SESSION_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw) as PersistedState;
     if (!p.sid) return null;
@@ -99,7 +105,10 @@ function persist(s: { sid: string; startedAt: number; pageCount: number; pageUrl
 }
 
 function clearPersisted() {
-  try { sessionStorage.removeItem(SESSION_KEY); } catch {}
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(LEGACY_SESSION_KEY);
+  } catch {}
 }
 
 async function gzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
@@ -166,7 +175,11 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
 
   function startRecording() {
     const maskAll = opts.privacyMode === 'mask_all_inputs' || opts.privacyMode === 'strict';
-    const maskSelector = opts.privacyMode === 'strict' ? '[data-mega-mask]' : undefined;
+    // Support both attribute names indefinitely — unlike storage keys or
+    // the end-of-session header, this one is baked into customers' own
+    // HTML/CMS templates, not something a redeploy of tracker.js migrates
+    // on its own.
+    const maskSelector = opts.privacyMode === 'strict' ? '[data-ps-mask], [data-mega-mask]' : undefined;
 
     // rrweb interaction sources that count as user activity
     // 1=MouseMove, 2=MouseInteraction, 3=Scroll, 5=Input, 6=TouchMove, 12=Drag
@@ -203,7 +216,7 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
           }
         } catch (err) {
           console.warn('[recorder] emit', err);
-          pushDiagnostic('mega-emit-error', {
+          pushDiagnostic('ps-emit-error', {
             message: String((err as Error)?.message ?? err),
             evType: (e as { type?: number })?.type,
           });
@@ -231,7 +244,7 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
       // next blank-replay session leaves a breadcrumb.
       errorHandler: (err) => {
         console.warn('[recorder] rrweb', err);
-        pushDiagnostic('mega-rrweb-error', {
+        pushDiagnostic('ps-rrweb-error', {
           message: String((err as Error)?.message ?? err),
           stack: String((err as Error)?.stack ?? '').slice(0, 400),
         });
@@ -352,7 +365,7 @@ export function initRecorder(opts: InitOptions): { stop: () => void; identify: (
     const headers: Record<string, string> = {
       'content-type': 'application/x-ndjson',
     };
-    if (o.end) headers['x-mega-end'] = '1';
+    if (o.end) headers['x-ps-end'] = '1';
 
     let toSend: Uint8Array | null = null;
     let sentCount = 0;

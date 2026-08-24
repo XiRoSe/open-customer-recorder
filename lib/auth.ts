@@ -4,7 +4,11 @@ import { timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 const ALG = 'HS256';
-const SESSION_COOKIE = 'mega_session';
+// Renamed from 'mega_session' in the PocketScience rebrand — no
+// migration needed, this is a server-set httpOnly cookie (not embedded
+// in customer markup), so the one-time side effect is just that every
+// logged-in admin needs to log back in once after deploy.
+const SESSION_COOKIE = 'ps_session';
 const SESSION_TTL_DAYS = 7;
 
 function jwtSecret() {

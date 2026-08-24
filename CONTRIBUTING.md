@@ -1,4 +1,4 @@
-# Contributing to Open Customer Recorder
+# Contributing to PocketScience
 
 Thanks for your interest in contributing! This document explains how to get set
 up and what we expect in a pull request.
@@ -26,10 +26,13 @@ npm run build     # production build + type-check
   should come with tests. DB-backed tests skip automatically when `DATABASE_URL`
   isn't set, so set it locally to run the full suite.
 - **Scope:** keep PRs focused. Unrelated refactors are harder to review.
-- **The tracker wire protocol** (cookie/header/storage names, the `mega_*`
-  identifiers, the `MegaRecorder` global) is a compatibility surface — don't
-  rename these without a clear migration story, since deployed trackers depend
-  on them.
+- **The tracker wire protocol** (header/storage names, the `ps_*` identifiers,
+  the `PocketScience` global) is a compatibility surface — don't rename these
+  without a clear migration story, since deployed trackers depend on them.
+  When this was rebranded from `mega_*`/`MegaRecorder`, the pre-rebrand names
+  stayed supported as aliases/fallbacks (see the README's wire protocol
+  section) rather than being dropped outright — follow that pattern for any
+  future rename too.
 
 ## Commit messages
 

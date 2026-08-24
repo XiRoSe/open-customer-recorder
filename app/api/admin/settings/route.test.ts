@@ -24,7 +24,7 @@ beforeEach(async () => {
 describe.skipIf(!dbReady)('GET/PUT /api/admin/settings', () => {
   it('GET returns defaults, PUT patches and persists', async () => {
     const { org } = await createOrgWithProject();
-    cookieStore.mega_session = await signSessionJwt({ orgId: org.id, email: 'admin@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
+    cookieStore.ps_session = await signSessionJwt({ orgId: org.id, email: 'admin@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
 
     let res = await GET();
     expect(res.status).toBe(200);
@@ -42,7 +42,7 @@ describe.skipIf(!dbReady)('GET/PUT /api/admin/settings', () => {
 
   it('PUT rejects a body with no valid flags', async () => {
     const { org } = await createOrgWithProject();
-    cookieStore.mega_session = await signSessionJwt({ orgId: org.id, email: 'admin@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
+    cookieStore.ps_session = await signSessionJwt({ orgId: org.id, email: 'admin@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
     const res = await PUT(new Request('http://localhost/api/admin/settings', {
       method: 'PUT', body: JSON.stringify({ junk: true }),
     }));

@@ -18,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             what caused the overlap on narrow screens. Desktop (sm+)
             keeps the identical absolute-centered look. */}
         <div className="relative flex items-center justify-between gap-x-3 gap-y-2 flex-wrap">
-          <Link href="/projects" className="font-semibold shrink-0">Open Customer Recorder</Link>
+          <Link href="/projects" className="font-semibold tracking-wide shrink-0">PocketScience</Link>
           <div className="order-3 w-full flex justify-center overflow-x-auto sm:order-none sm:w-auto sm:overflow-visible sm:absolute sm:left-1/2 sm:-translate-x-1/2">
             <ProjectNav />
           </div>

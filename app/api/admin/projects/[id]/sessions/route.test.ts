@@ -23,7 +23,7 @@ describe.skipIf(!dbReady)('GET /api/admin/projects/:id/sessions', () => {
     const token = await signSessionJwt({ orgId: org.id, email: 'admin@example.com', userId: 'u-1', name: 'Admin', userRole: 'owner' });
     const res = await GET(
       new Request(`http://localhost/api/admin/projects/${project.id}/sessions`, {
-        headers: { cookie: `mega_session=${token}` },
+        headers: { cookie: `ps_session=${token}` },
       }),
       { params: Promise.resolve({ id: project.id }) }
     );
