@@ -10,17 +10,24 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Strategy: just render children; protected pages check themselves via readSessionCookie + redirect.
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-40 bg-background border-b px-4 py-3 flex items-center justify-between">
-        <Link href="/projects" className="font-semibold">Open Customer Recorder</Link>
-        {/* centered independently of the flanks' widths */}
-        <div className="absolute left-1/2 -translate-x-1/2">
-          <ProjectNav />
+      <header className="sticky top-0 z-40 bg-background border-b px-4 py-3">
+        {/* flex-wrap: below sm, the nav (order-3, full width) drops to
+            its own centered row instead of the absolute-centered
+            desktop technique overlapping the brand/logout text — that
+            technique ignores sibling widths entirely, which is exactly
+            what caused the overlap on narrow screens. Desktop (sm+)
+            keeps the identical absolute-centered look. */}
+        <div className="relative flex items-center justify-between gap-x-3 gap-y-2 flex-wrap">
+          <Link href="/projects" className="font-semibold shrink-0">Open Customer Recorder</Link>
+          <div className="order-3 w-full flex justify-center overflow-x-auto sm:order-none sm:w-auto sm:overflow-visible sm:absolute sm:left-1/2 sm:-translate-x-1/2">
+            <ProjectNav />
+          </div>
+          {session && (
+            <form action="/api/admin/auth/logout" method="post" className="shrink-0">
+              <button className="text-sm text-muted-foreground hover:underline cursor-pointer">Log out</button>
+            </form>
+          )}
         </div>
-        {session && (
-          <form action="/api/admin/auth/logout" method="post">
-            <button className="text-sm text-muted-foreground hover:underline cursor-pointer">Log out</button>
-          </form>
-        )}
       </header>
       {/* The Researcher drawer sits in-flow beside the page content and
           squeezes it open/closed rather than covering it. */}
