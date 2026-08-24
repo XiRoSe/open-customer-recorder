@@ -127,4 +127,11 @@
   html {
     @apply font-sans;
   }
+  /* Tailwind v4 preflight leaves buttons on the browser's default arrow
+     cursor — every enabled button/summary in the app should invite a click. */
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
 }
