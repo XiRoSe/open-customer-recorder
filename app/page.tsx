@@ -1,17 +1,26 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { RecCounter } from '@/components/home/rec-counter';
 import { ScrollReveal } from '@/components/home/scroll-reveal';
+import { AskDemo } from '@/components/home/ask-demo';
 import styles from './home.module.css';
 
-const BRAND = 'OPEN CUSTOMER RECORDER';
+const BRAND = 'PocketScience';
+const OSS_URL = 'https://github.com/XiRoSe/pocketscience-oss';
+
+const TAPE = [
+  'Replay every visit',
+  'Plain-English answers',
+  'Rage-click detection',
+  'Session narratives',
+  'Visitor clusters',
+  'Auto-tags',
+  'Open source',
+];
 
 export const metadata: Metadata = {
   title: BRAND,
-  description: 'Self-hosted session replay with an AI that has already watched every visit.',
+  description: 'Ask your website anything. Session replay + an AI researcher, in the cloud or on your own server.',
 };
-
-const STRIP_HEIGHTS = [22, 38, 18, 55, 30, 70, 26, 44, 60, 20, 48, 34, 66, 24, 40, 52, 28, 62, 18, 46, 36, 58, 20, 42];
 
 export default function Home() {
   return (
@@ -27,123 +36,54 @@ export default function Home() {
             </Link>
           </div>
 
-          <p className={styles.eyebrow}>Session replay + AI research</p>
-          <span className={styles.rule} aria-hidden />
-          <h1 className={styles.headline}>
-            <span className={styles.headlineLine}><span>Every visit,</span></span>
-            <span className={styles.headlineLine}><span>on the record.</span></span>
-          </h1>
+          <div className={styles.heroCenter}>
+            <p className={styles.eyebrow}>Your whole user-research lab. Pocket-sized.</p>
+            <h1 className={styles.headline}>
+              <span className={styles.headlineLine}><span>Ask your website</span></span>
+              <span className={styles.headlineLine}><span className={styles.headlineBrass}>anything.</span></span>
+            </h1>
 
-          <div className={styles.heroBody}>
-            <p className={styles.subline}>
-              Watch exactly what a visitor did — every click, rage-click, and dead end —
-              then ask an AI that has already read the whole session what it means.
-              Self-hosted, so the recordings never leave your infrastructure.
-            </p>
-            <RecCounter />
+            <AskDemo />
+
+            <div className={styles.heroCtas}>
+              <Link href="/login" className={styles.ctaPrimary}>
+                Open the lab <span aria-hidden>&rarr;</span>
+              </Link>
+              <p className={`${styles.ctaNote} ${styles.mono}`}>Cloud or self-hosted · open source</p>
+            </div>
           </div>
         </div>
 
-        <div className={styles.strip} aria-hidden>
-          <span className={styles.playhead} />
-          {STRIP_HEIGHTS.map((h, i) => (
-            <span key={i} className={styles.stripBar} data-hi={i % 6 === 3 ? '1' : undefined} style={{ height: `${h}%` }} />
-          ))}
+        <div className={styles.tape} aria-hidden>
+          <div className={styles.tapeInner}>
+            {[...TAPE, ...TAPE].map((item, i) => (
+              <span key={i} className={styles.tapeItem}>{item}<span className={styles.tapeDot}>·</span></span>
+            ))}
+          </div>
         </div>
       </header>
 
-      <section className={styles.band} data-reveal>
-        <div className={styles.bandInner}>
-          <div className={styles.bandText}>
-            <p className={styles.eyebrow}>Sessions</p>
-            <h2>Pixel-accurate replay, not a heatmap guess.</h2>
-            <p>
-              Every recording is the real DOM, scrubbable frame by frame — rage clicks,
-              form abandons, and dead ends included. No sampling, no "estimated" anything.
-            </p>
-          </div>
-          <div className={styles.diagram}>
-            <div className={styles.scrub}>
-              <div className={styles.scrubTrack}>
-                <span className={styles.scrubFill} />
-                <span className={styles.scrubDot} />
-              </div>
-              <div className={`${styles.scrubTime} ${styles.mono}`}>
-                <span>1:14</span>
-                <span>3:02</span>
-              </div>
+      <section className={styles.choiceBand} data-reveal>
+        <div className={styles.choiceInner}>
+          <p className={styles.eyebrow}>Run it your way</p>
+          <h2 className={styles.h2}>Cloud, or self-hosted.</h2>
+          <p className={styles.bandSub}>Same lab, two ways to plug it in.</p>
+          <div className={styles.choice}>
+            <div className={styles.choiceCard}>
+              <span className={`${styles.choiceLabel} ${styles.mono}`}>Cloud</span>
+              <h3>We host it</h3>
+              <p>Sign up, paste one script tag, watch your first session come in minutes later.</p>
+              <Link href="/login" className={styles.ctaPrimary}>
+                Start now <span aria-hidden>&rarr;</span>
+              </Link>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.band} data-flip="1" data-reveal>
-        <div className={styles.bandInner}>
-          <div className={styles.bandText}>
-            <p className={styles.eyebrow}>Researcher</p>
-            <h2>An AI that already watched every session.</h2>
-            <p>
-              Ask it in plain language — &ldquo;why do mobile signups drop on step two?&rdquo;
-              — and it answers with the actual evidence: real charts, real sessions, cited.
-            </p>
-          </div>
-          <div className={styles.diagram}>
-            <div className={styles.stream}>
-              <span className={styles.streamLine} style={{ width: '92%' }} />
-              <span className={styles.streamLine} style={{ width: '68%' }} />
-              <span className={styles.streamLine} style={{ width: '80%' }} />
-              <span className={styles.streamCursor}>answering&hellip;</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.band} data-reveal>
-        <div className={styles.bandInner}>
-          <div className={styles.bandText}>
-            <p className={styles.eyebrow}>Timeline &amp; Clusters</p>
-            <h2>See the pattern before you read a single session.</h2>
-            <p>
-              Traffic, friction, and devices laid out over time, with visitors grouped
-              by how they actually behave — not by who they claim to be.
-            </p>
-          </div>
-          <div className={styles.diagram}>
-            <div className={styles.combo}>
-              <div className={styles.hist} aria-hidden>
-                {[30, 55, 40, 90, 60, 45, 70].map((h, i) => (
-                  <span key={i} className={styles.histBar} data-hi={i === 3 ? '1' : undefined} style={{ height: `${h}%` }} />
-                ))}
-              </div>
-              <div className={styles.dots} aria-hidden>
-                <span className={styles.dot} style={{ top: '10%', left: '20%' }} />
-                <span className={styles.dot} style={{ top: '35%', left: '55%' }} />
-                <span className={styles.dot} style={{ top: '60%', left: '15%' }} />
-                <span className={styles.dot} data-hi="1" style={{ top: '45%', left: '38%' }} />
-                <span className={styles.dot} style={{ top: '20%', left: '75%' }} />
-                <span className={styles.dot} style={{ top: '70%', left: '60%' }} />
-                <span className={styles.dot} style={{ top: '80%', left: '30%' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.band} data-flip="1" data-reveal>
-        <div className={styles.bandInner}>
-          <div className={styles.bandText}>
-            <p className={styles.eyebrow}>Tags</p>
-            <h2>Visitors sort themselves, automatically.</h2>
-            <p>
-              Rules watch every session as it happens — browser, device, source, duration,
-              intent — and tag it the moment it qualifies. No spreadsheets.
-            </p>
-          </div>
-          <div className={styles.diagram}>
-            <div className={styles.pills}>
-              <span className={styles.pill}>Returning</span>
-              <span className={styles.pill} data-brass="1">Signed up</span>
-              <span className={styles.pill}>Mobile</span>
+            <div className={styles.choiceCard}>
+              <span className={`${styles.choiceLabel} ${styles.mono}`}>Self-hosted</span>
+              <h3>You host it</h3>
+              <p>One Docker container on your own server. Sessions never leave your infrastructure.</p>
+              <a href={OSS_URL} className={styles.ctaGhost} target="_blank" rel="noopener noreferrer">
+                Get the code <span aria-hidden>↗</span>
+              </a>
             </div>
           </div>
         </div>
@@ -151,11 +91,16 @@ export default function Home() {
 
       <section className={styles.closing} data-reveal>
         <div className={styles.closingInner}>
-          <p className={styles.closingClaim}>
-            Your visitors&rsquo; sessions. Your server. Nobody else&rsquo;s.
-          </p>
-          <Link href="/login" className={styles.loginBtn}>
-            Log in <span aria-hidden>&rarr;</span>
+          <div>
+            <p className={styles.closingClaim}>
+              Big-lab research. One small server. Yours.
+            </p>
+            <p className={`${styles.mono} ${styles.eyebrow}`} style={{ marginTop: '0.75rem' }}>
+              Sessions never leave your hands
+            </p>
+          </div>
+          <Link href="/login" className={styles.ctaPrimary}>
+            Open the lab <span aria-hidden>&rarr;</span>
           </Link>
         </div>
         <div className={styles.footer}>
