@@ -131,7 +131,7 @@ function TagDraftBlock({ block, projectId, threadId }: {
       <span className={styles.swatch} style={{ background: TAG_COLOR_HEX[block.color as TagColor] ?? '#3b82f6' }} />
       <span className={styles.confirmWhat}>
         <b>{block.name}</b>
-        <small>{ruleWords} · ~{block.matchCount}{block.approx ? '+' : ''} sessions · you apply, I only draft</small>
+        <small>{ruleWords} · you apply, I only draft</small>
       </span>
       {state === 'applied'
         ? <span className={styles.applied}>Applied ✓ {applied > 0 ? `· ${applied} tagged` : ''}</span>

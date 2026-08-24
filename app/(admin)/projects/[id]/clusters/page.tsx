@@ -11,10 +11,10 @@ import { HeaderRule } from '@/components/header-rule';
 
 export default async function ClustersPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; dimension?: string; segment?: string }>;
 }) {
   const { id } = await props.params;
-  const { range: rangeParam } = await props.searchParams;
+  const { range: rangeParam, dimension: dimensionParam, segment: segmentParam } = await props.searchParams;
   const session = await readSessionCookie();
   if (!session) redirect('/login');
   const [project] = await db.select().from(schema.projects)
@@ -54,6 +54,7 @@ export default async function ClustersPage(props: {
 
       {points.length > 0 ? (
         <ClusterMap dims={dims} sessionsBasePath={`/projects/${id}/sessions`}
+                    initialDimension={dimensionParam} initialSegment={segmentParam}
                     rangeSlot={<ClusterRangePills basePath={basePath} rangeKey={rangeKey} />} />
       ) : mappedTotal > 0 ? (
         <>

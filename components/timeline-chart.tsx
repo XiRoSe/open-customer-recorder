@@ -46,7 +46,7 @@ const FRICTION_ORDER: [string, string, string][] = [
  * passed in as a slot, measure chips beside them) so the selectors sit
  * together outside the chart card; trend chips render inside the card.
  * Hover a bar for the breakdown; click to open that time slice. */
-export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot, patternsSlot }: {
+export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot, patternsSlot, initialMetric }: {
   buckets: TimelineBucket[];
   bucketMs: number;
   sessionsBasePath: string;
@@ -55,9 +55,11 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
   analysisSlot?: React.ReactNode;
   trendsSlot?: React.ReactNode;
   patternsSlot?: React.ReactNode;
+  /** Preselect a measure (?measure= deep links, e.g. from the Researcher). */
+  initialMetric?: TimelineMetric;
 }) {
   const router = useRouter();
-  const [metric, setMetric] = useState<TimelineMetric>('sessions');
+  const [metric, setMetric] = useState<TimelineMetric>(initialMetric ?? 'sessions');
   const [hover, setHover] = useState<Hover | null>(null);
 
   // Tags in fixed order (busiest first across the window) so the stack

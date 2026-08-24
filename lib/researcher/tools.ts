@@ -136,7 +136,12 @@ const getTimeline: ToolSpec = {
       citation: {
         label: 'Timeline',
         detail: `Timeline aggregates · ${rangeLabel}${focus ? ` · focus ${focus}` : ''}`,
-        href: `/projects/${projectId}/timeline?range=${range}`,
+        // Preconfigured view: the Timeline page opens on the measure the
+        // question was about, not just the range.
+        href: `/projects/${projectId}/timeline?range=${range}${
+          focus === 'friction' ? '&measure=frustration'
+          : focus === 'devices' ? '&measure=clicks'
+          : ''}`,
       },
       caveat: sampleCaveat(t.sessions, rangeLabel),
     };
@@ -352,7 +357,14 @@ const getClusters: ToolSpec = {
     const dimArg = str(args.dimension)?.toLowerCase();
     const dimension: Dimension = (FACET_DIMENSIONS as readonly string[]).includes(dimArg ?? '')
       ? dimArg as Dimension : 'overall';
+    const segmentArg = str(args.segment);
     const segments = await segmentsForProject(projectId, dimension);
+    // A named segment steers the deep link: the cluster map opens with it
+    // spotlighted. Loose match so "frantic integrators" finds the segment.
+    const spotlit = segmentArg
+      ? segments.find((s) => s.name.toLowerCase().includes(segmentArg.toLowerCase())
+          || segmentArg.toLowerCase().includes(s.name.toLowerCase()))
+      : undefined;
     const [dimAnalysis] = await db.select().from(schema.dimensionAnalyses)
       .where(sql`${schema.dimensionAnalyses.projectId} = ${projectId} AND ${schema.dimensionAnalyses.dimension} = ${dimension}`)
       .limit(1);
@@ -361,14 +373,22 @@ const getClusters: ToolSpec = {
       Object.fromEntries(segments.map((s) => [s.name, s.size])),
       8,
     );
+    const params = new URLSearchParams();
+    if (dimension !== 'overall') params.set('dimension', dimension);
+    if (spotlit) params.set('segment', spotlit.name);
     return {
       facts: {
         dimension,
+        ...(spotlit ? { focusedSegment: { name: spotlit.name, size: spotlit.size, description: spotlit.description, analysis: spotlit.analysis ? spotlit.analysis.slice(0, 400) : null } } : {}),
         segments: segments.map((s) => ({ name: s.name, size: s.size, description: s.description, analysis: s.analysis ? s.analysis.slice(0, 300) : null })),
         dimensionAnalysis: dimAnalysis?.analysis?.slice(0, 400) || null,
       },
       blocks: evidence ? [evidence] : [],
-      citation: { label: 'Clusters', detail: `Behavioral segments · ${dimension} dimension`, href: `/projects/${projectId}/clusters` },
+      citation: {
+        label: 'Clusters',
+        detail: `Behavioral segments · ${dimension} dimension${spotlit ? ` · “${spotlit.name}” spotlighted` : ''}`,
+        href: `/projects/${projectId}/clusters${params.size ? `?${params}` : ''}`,
+      },
       caveat: segments.length === 0
         ? 'No segments yet — clustering needs at least 4 finished visitor profiles.'
         : null,
@@ -454,30 +474,33 @@ const previewTagRule: ToolSpec = {
       };
     }
     let matchCount = 0;
+    let visitorCount = 0;
     let approx = false;
     if (kind === 'session_count_gte') {
       const threshold = parseInt(value, 10) || 1;
-      const res = await db.execute<{ value: string }>(sql`
-        SELECT count(*) AS value FROM (
-          SELECT id, row_number() OVER (PARTITION BY anon_id ORDER BY started_at) AS rn
+      const res = await db.execute<{ n: string; v: string }>(sql`
+        SELECT count(*) AS n, count(DISTINCT anon_id) AS v FROM (
+          SELECT id, anon_id, row_number() OVER (PARTITION BY anon_id ORDER BY started_at) AS rn
           FROM sessions WHERE project_id = ${projectId}::uuid
         ) s WHERE s.rn >= ${threshold}
       `);
-      const rows = Array.isArray(res) ? res : (res as unknown as { rows: { value: string }[] }).rows ?? [];
-      matchCount = Number(rows[0]?.value ?? 0);
+      const rows = Array.isArray(res) ? res : (res as unknown as { rows: { n: string; v: string }[] }).rows ?? [];
+      matchCount = Number(rows[0]?.n ?? 0);
+      visitorCount = Number(rows[0]?.v ?? 0);
     } else {
       // Entry-URL approximation: the real rule also matches every visited
       // URL inside the replay, which is too heavy to preview live.
       approx = true;
-      const res = await db.execute<{ value: string }>(sql`
-        SELECT count(*) AS value FROM sessions
+      const res = await db.execute<{ n: string; v: string }>(sql`
+        SELECT count(*) AS n, count(DISTINCT coalesce(user_id, anon_id)) AS v FROM sessions
         WHERE project_id = ${projectId}::uuid AND page_url ILIKE ${'%' + value + '%'}
       `);
-      const rows = Array.isArray(res) ? res : (res as unknown as { rows: { value: string }[] }).rows ?? [];
-      matchCount = Number(rows[0]?.value ?? 0);
+      const rows = Array.isArray(res) ? res : (res as unknown as { rows: { n: string; v: string }[] }).rows ?? [];
+      matchCount = Number(rows[0]?.n ?? 0);
+      visitorCount = Number(rows[0]?.v ?? 0);
     }
     return {
-      facts: { tagPreview: { kind, value, matchCount, approx } },
+      facts: { tagPreview: { kind, value, matchCount, visitorCount, approx } },
       blocks: [],
       citation: { label: 'Tags', detail: `Tag rule preview: ${kind} "${value}"`, href: `/projects/${projectId}/tags` },
       caveat: approx ? 'Preview counts entry URLs only; applying the rule also scans in-session navigation, so the final count can be higher.' : null,

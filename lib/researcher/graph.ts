@@ -161,8 +161,22 @@ export async function runResearch(opts: {
     const plan = state.plan!;
     const started = Date.now();
     let content: string;
+    const draftBlock = blocks.find((b) => b.type === 'tagDraft');
     if (plan.intent === 'smalltalk' && state.outcomes.length === 0) {
       content = 'Happy to help — ask me anything about your sessions, visitors, trends, or segments.';
+      emit({ type: 'token', text: content });
+    } else if (draftBlock && draftBlock.type === 'tagDraft') {
+      // Tag flow speaks in the mock's exact voice, deterministically —
+      // crisp, correct, and no LLM latency between preview and Apply.
+      const preview = state.outcomes.find((o) => 'tagPreview' in o.facts);
+      const p = preview?.facts.tagPreview as { matchCount: number; visitorCount?: number; approx: boolean } | undefined;
+      const what = draftBlock.kind === 'url_contains'
+        ? `every future visit touching “${draftBlock.value}”`
+        : `every visitor reaching ${draftBlock.value}+ sessions`;
+      const visitors = p?.visitorCount ? ` from ${p.visitorCount} visitors` : '';
+      content = p && p.matchCount > 0
+        ? `Ready — it would tag ${p.matchCount}${p.approx ? '+' : ''} past sessions${visitors}, plus ${what}.`
+        : `Ready — nothing matches yet, but the rule will catch ${what} from now on.`;
       emit({ type: 'token', text: content });
     } else {
       content = await composeAnswer({
@@ -216,12 +230,30 @@ export async function runResearch(opts: {
     seenCites.add(k);
     return true;
   });
+  // The brass view-nav: one deep link into the exact dashboard view the
+  // answer came from (mock's "See the timeline slice →").
+  const LINK_LABELS: Record<string, string> = {
+    overview: 'Open the overview →',
+    timeline: 'Open this timeline →',
+    sessions: 'Open these sessions →',
+    visitors: 'Open the visitors →',
+    clusters: 'Open the cluster map →',
+    session_detail: 'Watch the replay →',
+    tag: 'Open the tags page →',
+    followup: 'Open this view →',
+  };
+  const primary = citations.find((c) => c.href);
+  const link = !interrupted && primary?.href
+    ? { label: LINK_LABELS[plan.intent] ?? 'Open this view →', href: primary.href }
+    : null;
+
   const payload: AssistantPayload = {
     blocks,
     citations: dedupedCitations,
     caveat: caveats[0] ?? null,
     followups: interrupted ? [] : followupsFor(plan, finalState.outcomes ?? [], question),
     footprints,
+    link,
     ...(interrupted ? { interrupted: true } : {}),
   };
   return { content, payload };

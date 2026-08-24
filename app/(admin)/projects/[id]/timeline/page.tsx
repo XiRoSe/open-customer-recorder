@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { db, schema } from '@/lib/db';
 import { and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
-import { timelineForProject, timelineAnalysis, TIMELINE_RANGES, DEFAULT_RANGE } from '@/lib/timeline';
+import { timelineForProject, timelineAnalysis, TIMELINE_RANGES, TIMELINE_METRICS, DEFAULT_RANGE, type TimelineMetric } from '@/lib/timeline';
 import { SOURCE_CATEGORIES, SOURCE_META } from '@/lib/traffic-source';
 import { TimelineChart } from '@/components/timeline-chart';
 import { BreakdownRows } from '@/components/breakdown-rows';
@@ -23,10 +23,10 @@ const CHIP_EXPLAINERS: Record<string, string> = {
 
 export default async function TimelinePage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; measure?: string }>;
 }) {
   const { id } = await props.params;
-  const { range: rangeParam } = await props.searchParams;
+  const { range: rangeParam, measure: measureParam } = await props.searchParams;
   const session = await readSessionCookie();
   if (!session) redirect('/login');
   const [project] = await db.select().from(schema.projects)
@@ -34,6 +34,8 @@ export default async function TimelinePage(props: {
   if (!project) redirect('/projects');
 
   const rangeKey = TIMELINE_RANGES[rangeParam ?? ''] ? rangeParam! : DEFAULT_RANGE;
+  // ?measure= preselects the chart's measure — deep links from the Researcher.
+  const initialMetric = measureParam && measureParam in TIMELINE_METRICS ? measureParam as TimelineMetric : undefined;
   const [data, { analysis, patterns }] = await Promise.all([
     timelineForProject(id, rangeKey),
     timelineAnalysis(id, rangeKey),
@@ -63,6 +65,7 @@ export default async function TimelinePage(props: {
           buckets={data.buckets}
           bucketMs={data.bucketMs}
           tagMeta={data.tagMeta}
+          initialMetric={initialMetric}
           sessionsBasePath={`/projects/${id}/sessions`}
           rangeSlot={<RangePills basePath={basePath} rangeKey={rangeKey} />}
           analysisSlot={analysis ? (

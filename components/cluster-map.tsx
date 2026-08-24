@@ -46,15 +46,24 @@ interface HoverInfo { visitorKey: string; excerpt: string; segmentId: string | n
  * glide to that dimension's positions, recolored by its segments. Owns
  * the control row (range pills passed in as a slot, dimension chips
  * beside them) so the selectors sit together outside the map card. */
-export function ClusterMap({ dims, sessionsBasePath, rangeSlot }: {
+export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension, initialSegment }: {
   dims: DimensionData[];
   sessionsBasePath: string;
   rangeSlot?: React.ReactNode;
+  /** Preselect a dimension (?dimension= deep links, e.g. from the Researcher). */
+  initialDimension?: string;
+  /** Spotlight a segment by name on load (?segment= deep links). */
+  initialSegment?: string;
 }) {
   const router = useRouter();
-  const [dimKey, setDimKey] = useState(dims[0]?.dimension ?? 'overall');
+  const startDim = dims.find((d) => d.dimension === initialDimension)?.dimension ?? dims[0]?.dimension ?? 'overall';
+  const [dimKey, setDimKey] = useState(startDim);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  const [focusSegment, setFocusSegment] = useState<string | null>(null);
+  const [focusSegment, setFocusSegment] = useState<string | null>(() => {
+    if (!initialSegment) return null;
+    const d = dims.find((x) => x.dimension === startDim);
+    return d?.segments.find((s) => s.name.toLowerCase() === initialSegment.toLowerCase())?.id ?? null;
+  });
 
   const dim = dims.find((d) => d.dimension === dimKey) ?? dims[0];
 

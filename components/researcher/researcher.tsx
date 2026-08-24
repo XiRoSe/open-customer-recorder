@@ -393,6 +393,9 @@ function AssistantMessage({ content, payload, projectId, threadId, onAsk, onRetr
         {content && <div className={styles.prose}>{content}</div>}
         {p?.blocks.map((b, i) => <BlockView key={i} block={b} projectId={projectId} threadId={threadId} />)}
         {p?.caveat && <div className={styles.caveat}>{p.caveat}</div>}
+        {p?.link && (
+          <a className={styles.go} href={p.link.href} target="_blank" rel="noreferrer">{p.link.label}</a>
+        )}
         {p && <CitationChips citations={p.citations} />}
         {p?.interrupted && (
           <div className={styles.stopped}>

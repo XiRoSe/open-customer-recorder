@@ -37,6 +37,10 @@ export interface AssistantPayload {
   caveat: string | null;
   followups: string[];
   footprints: Footprint[];
+  /** The answer's brass view-nav deep link — opens the exact dashboard
+   * view (filtered timeline / cluster map / session list) behind the
+   * figures. */
+  link?: { label: string; href: string } | null;
   /** Set when the user hit stop mid-stream. */
   interrupted?: boolean;
 }

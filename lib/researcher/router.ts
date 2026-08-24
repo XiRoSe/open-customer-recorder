@@ -65,7 +65,7 @@ Tools (pick at most 3 steps, usually 1):
 - get_timeline {range, focus?}: totals + trends vs previous window. focus one of sources|devices|browsers|countries|referrers|entries|friction.
 - query_sessions {range?, user?, tag?, device?, source?, country?, browser?, path?, minSeconds?, frustratedOnly?, newOnly?, sort?, limit?}: concrete sessions to watch. sort one of recent|longest|most_pages. device one of mobile|tablet|desktop. source one of search|referral|ads|social|internal|direct.
 - query_visitors {range?, sort?, limit?}: visitors grouped with totals + AI profiles. sort one of sessions|time|recent.
-- get_clusters {dimension?}: behavioral segments. dimension one of overall|persona|intent|source|experience.
+- get_clusters {dimension?, segment?}: behavioral segments. dimension one of overall|persona|intent|source|experience. segment = a segment name from the question, to spotlight it on the cluster map.
 - session_digest {sessionId}: everything about one session (needs a UUID from history).
 - preview_tag_rule {kind, value}: how many sessions a draft tag rule would match.
 
@@ -88,6 +88,8 @@ Q: "who are our most engaged users?"
 {"intent":"visitors","from_history":false,"steps":[{"tool":"query_visitors","args":{"range":"30d","sort":"time"}}],"tag_draft":null}
 Q: "what kinds of visitors do we have?"
 {"intent":"clusters","from_history":false,"steps":[{"tool":"get_clusters","args":{"dimension":"overall"}}],"tag_draft":null}
+Q: "tell me about the Frantic Integrators segment"
+{"intent":"clusters","from_history":false,"steps":[{"tool":"get_clusters","args":{"segment":"Frantic Integrators"}}],"tag_draft":null}
 Q: "tag everyone who visited pricing"
 {"intent":"tag","from_history":false,"steps":[{"tool":"preview_tag_rule","args":{"kind":"url_contains","value":"pricing"}}],"tag_draft":{"name":"Pricing visitors","kind":"url_contains","value":"pricing","color":"blue"}}
 Q: "and on mobile?" (after a sessions question)
@@ -159,7 +161,9 @@ export function heuristicPlan(question: string): ResearchPlan {
     }
   }
   if (/\bsegment|cluster|persona|kinds? of (visitor|user)/i.test(q)) {
-    return { intent: 'clusters', fromHistory: false, steps: [{ tool: 'get_clusters', args: {} }], tagDraft: null };
+    const named = question.match(/["'“”]([^"'“”]{3,50})["'“”]/)?.[1]
+      ?? question.match(/\b(?:about|the)\s+(?:the\s+)?([A-Z][\w-]+(?:\s+[A-Z][\w-]+){0,4})\s+segment/)?.[1];
+    return { intent: 'clusters', fromHistory: false, steps: [{ tool: 'get_clusters', args: named ? { segment: named } : {} }], tagDraft: null };
   }
   if (/\bwho\b|visitor|most (engaged|active)|returning users?\b/i.test(q)) {
     return { intent: 'visitors', fromHistory: false, steps: [{ tool: 'query_visitors', args: { range, sort: /time|engaged/.test(q) ? 'time' : 'sessions' } }], tagDraft: null };
