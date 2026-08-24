@@ -49,7 +49,13 @@ export default function LoginPage() {
               value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
-          <Button type="submit" disabled={busy} className="w-full">{busy ? 'Logging in…' : 'Log in'}</Button>
+          <Button
+            type="submit"
+            disabled={busy}
+            className="w-full cursor-pointer transition-all hover:bg-primary/85 hover:shadow-sm active:scale-[.99] disabled:cursor-default"
+          >
+            {busy ? 'Logging in…' : 'Log in'}
+          </Button>
         </form>
       </Card>
     </main>
