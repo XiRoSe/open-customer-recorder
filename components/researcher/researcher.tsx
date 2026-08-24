@@ -284,7 +284,6 @@ export function Researcher({ name, email }: { name: string; email: string }) {
                             {o.text.includes('{strong}')
                               ? <>{o.text.split('{strong}')[0]}<b>{o.strong}</b>{o.text.split('{strong}')[1]}</>
                               : <><b>{o.strong}</b> — {o.text}</>}
-                            <span className={styles.askHint}>Ask about this →</span>
                           </button>
                         ))}
                       </div>
