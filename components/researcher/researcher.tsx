@@ -251,7 +251,6 @@ export function Researcher({ name, email }: { name: string; email: string }) {
           {showContinuing && (
             <div className={styles.continuing}>
               <span className={styles.cLabel}>Continuing · <span>{threadTitle}</span></span>
-              <button type="button" className={styles.cNew} onClick={newThread}>New thread</button>
             </div>
           )}
         </div>
