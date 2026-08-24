@@ -218,10 +218,22 @@
    the conversation. */
 .ws { display: flex; height: 100vh; height: 100dvh; background: var(--background); color: var(--foreground); }
 
-/* history rail — closed by default, slides open */
+/* history rail — closed by default, slides open in-flow (squeezes the
+   conversation) on roomy screens. Below ~700px there isn't enough
+   space left for both at once (264px rail + content) without the
+   content's own nowrap chips forcing a horizontal scrollbar — so under
+   that width the rail becomes a floating overlay instead (fixed +
+   slide, doesn't take space from the conversation) with a tap-to-close
+   scrim. Same toggle, same classes — only the mechanics change. */
 .wsRail { width: 264px; flex-shrink: 0; background: color-mix(in srgb, var(--muted) 35%, var(--background)); border-right: 1px solid var(--border); overflow: hidden; transition: width .3s cubic-bezier(.22, 1, .36, 1), border-color .3s; }
 .wsRailHidden { width: 0; border-right-color: transparent; }
 .wsRailInner { width: 264px; height: 100%; display: flex; flex-direction: column; }
+.wsScrim { display: none; }
+@media (max-width: 700px) {
+  .wsRail { position: fixed; inset: 0 auto 0 0; z-index: 50; width: 264px; max-width: 84vw; transform: translateX(0); box-shadow: 8px 0 24px rgba(9, 9, 11, .10); transition: transform .3s cubic-bezier(.22, 1, .36, 1); }
+  .wsRailHidden { width: 264px; max-width: 84vw; transform: translateX(-100%); border-right-color: var(--border); }
+  .wsScrim { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(9, 9, 11, .32); animation: rise .2s; }
+}
 .wsRailTop { padding: 16px 16px 12px; }
 .wsBrandRow { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
 .wsGlyph { width: 30px; height: 30px; border-radius: 9px; background: rgba(176, 141, 87, .12); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #b08d57; flex-shrink: 0; }

@@ -25,6 +25,12 @@ export function ResearcherWorkspace({ projectId, name, initialThreadId, from }: 
   const router = useRouter();
   const chat = useResearcherChat(projectId, { initialThreadId });
   const [railOpen, setRailOpen] = useState(false);
+  // The rail overlays (rather than squeezing) content below 700px — see
+  // the CSS breakpoint. There, picking a thread should close it, same
+  // as any mobile drawer; on wider screens it stays pinned open.
+  const closeRailOnNarrow = useCallback(() => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 700) setRailOpen(false);
+  }, []);
   const [shareState, setShareState] = useState<'idle' | 'working' | 'copied'>('idle');
 
   const { loadObservations, loadThreads } = chat;
@@ -68,6 +74,9 @@ export function ResearcherWorkspace({ projectId, name, initialThreadId, from }: 
   return (
     <SurfaceContext.Provider value="workspace">
       <div className={styles.ws}>
+        {/* Narrow screens only (CSS-gated) — tap outside the overlaid
+            rail to close it, same as any mobile drawer. */}
+        {railOpen && <div className={styles.wsScrim} onClick={() => setRailOpen(false)} />}
         <aside className={`${styles.wsRail} ${railOpen ? '' : styles.wsRailHidden}`} aria-label="Research history">
           <div className={styles.wsRailInner}>
             <div className={styles.wsRailTop}>
@@ -75,7 +84,7 @@ export function ResearcherWorkspace({ projectId, name, initialThreadId, from }: 
                 <span className={styles.wsGlyph}>R</span>
                 <span><span className={styles.wsBrandT}>Researcher</span><span className={styles.wsBrandS}>research workspace</span></span>
               </div>
-              <button type="button" className={styles.wsNew} onClick={() => chat.newThread()}>
+              <button type="button" className={styles.wsNew} onClick={() => { chat.newThread(); closeRailOnNarrow(); }}>
                 <span className={styles.wsPlus}>+</span> New research
               </button>
             </div>
@@ -83,7 +92,7 @@ export function ResearcherWorkspace({ projectId, name, initialThreadId, from }: 
               <ThreadList
                 threads={railThreads}
                 activeId={chat.threadId}
-                onPick={(t) => { if (t.id !== chat.threadId) void chat.openThreadById(t.id, t.title); }}
+                onPick={(t) => { if (t.id !== chat.threadId) void chat.openThreadById(t.id, t.title); closeRailOnNarrow(); }}
               />
             </div>
           </div>
