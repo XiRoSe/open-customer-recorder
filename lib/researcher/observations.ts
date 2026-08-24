@@ -70,7 +70,7 @@ export async function observationsForProject(projectId: string): Promise<Observa
   }
 
   // Most active segment.
-  if (out.length < 3 && o.segments[0]) {
+  if (out.length < 4 && o.segments[0]) {
     const s = o.segments[0];
     out.push({
       text: `“${s.name}” was the most active segment — {strong} came back this week.`,
@@ -79,12 +79,37 @@ export async function observationsForProject(projectId: string): Promise<Observa
     });
   }
 
+  // Top traffic source by volume — distinct from "emerging" above (that
+  // one needs a share swing; this one always has an answer once there's
+  // any traffic at all).
+  if (out.length < 4 && t.sessions > 0) {
+    const bySource = Object.entries(t.bySource).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    if (bySource[0]) {
+      const [source, n] = bySource[0];
+      out.push({
+        text: `${SOURCE_META[source as keyof typeof SOURCE_META]?.label ?? source} drove {strong} of this week's sessions.`,
+        strong: `${Math.round((100 * n) / t.sessions)}%`,
+        question: 'Where is our traffic coming from this week?',
+      });
+    }
+  }
+
   // The week in one line.
-  if (out.length < 3 && t.sessions > 0) {
+  if (out.length < 4 && t.sessions > 0) {
     out.push({
       text: `The week so far: {strong}, ${t.newVisitors} of them first-time visitors.`,
       strong: `${t.sessions} sessions`,
       question: 'How are we doing this week?',
+    });
+  }
+
+  // Engagement rate — the last, always-available filler so a quiet week
+  // with only 1-2 real signals still fills the 2x2 grid evenly.
+  if (out.length < 4 && t.sessions > 0) {
+    out.push({
+      text: `{strong} of visitors stayed engaged (30s+) this week.`,
+      strong: `${Math.round((100 * t.engaged) / t.sessions)}%`,
+      question: 'How engaged are our visitors this week?',
     });
   }
 
@@ -95,7 +120,7 @@ export async function observationsForProject(projectId: string): Promise<Observa
       question: 'How do I check the tracker is installed correctly?',
     });
   }
-  const observations = out.slice(0, 3);
+  const observations = out.slice(0, 4);
   cache.set(projectId, { at: Date.now(), observations });
   return observations;
 }
