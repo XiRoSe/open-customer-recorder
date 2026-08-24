@@ -308,10 +308,15 @@ export const researcherThreads = pgTable('researcher_threads', {
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   userId: uuid('user_id').notNull().references(() => adminUsers.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
+  // Set when the owner shares a read-only link (workspace's Share
+  // button); null = not shared. The token itself is the capability —
+  // the public share page needs no auth, just a matching row.
+  shareToken: text('share_token').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   userProjectIdx: index('researcher_threads_user_project_idx').on(t.userId, t.projectId, t.lastMessageAt),
+  shareTokenIdx: index('researcher_threads_share_token_idx').on(t.shareToken),
 }));
 
 // One row per turn half. Assistant rows carry the full render payload

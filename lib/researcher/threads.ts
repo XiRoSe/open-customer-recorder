@@ -77,6 +77,31 @@ export async function listThreads(projectId: string, userId: string, limit = 30)
   }));
 }
 
+/** Public, unauthenticated lookup for the share page — the token IS the
+ * capability, so this intentionally skips the userId/projectId check
+ * that every other reader here enforces. */
+export async function threadByShareToken(token: string): Promise<{ id: string; projectId: string; title: string; messages: ThreadMessage[] } | null> {
+  const [t] = await db.select({ id: schema.researcherThreads.id, projectId: schema.researcherThreads.projectId, title: schema.researcherThreads.title })
+    .from(schema.researcherThreads)
+    .where(eq(schema.researcherThreads.shareToken, token)).limit(1);
+  if (!t) return null;
+  const rows = await db.select().from(schema.researcherMessages)
+    .where(eq(schema.researcherMessages.threadId, t.id))
+    .orderBy(asc(schema.researcherMessages.createdAt));
+  return {
+    id: t.id,
+    projectId: t.projectId,
+    title: t.title,
+    messages: rows.map((m) => ({
+      id: m.id,
+      role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+      content: m.content,
+      payload: (m.payload ?? null) as AssistantPayload | null,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  };
+}
+
 export async function threadMessages(projectId: string, userId: string, threadId: string): Promise<ThreadMessage[] | null> {
   const [t] = await db.select({ id: schema.researcherThreads.id }).from(schema.researcherThreads)
     .where(and(
