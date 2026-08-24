@@ -107,7 +107,10 @@ export async function register() {
           await q.addBulk(hours.map((h) => ({
             name: 'rollup',
             data: { projectId: p.id, hourStart: h },
-            opts: { jobId: `roll:${p.id}:${h}` },
+            // removeOnComplete/Fail EXPLICITLY per job: a finished job's id
+            // lingering in the completed set silently blocks every future
+            // re-add of that hour — which once froze backfill for good.
+            opts: { jobId: `roll:${p.id}:${h}`, removeOnComplete: true, removeOnFail: true },
           })));
         }
       } catch (e) { console.warn('[queue] rollup scheduling failed', e); }

@@ -260,6 +260,10 @@ export function trendChips(cur: TimelineTotals, prev: TimelineTotals | null): Tr
 export async function timelineRowsForProject(projectId: string, windowEnd: number, windowMs: number): Promise<TimelineSessionRow[]> {
   // Raw-SQL params must be primitives — a JS Date fails serialization.
   const fetchStart = new Date(windowEnd - 2 * windowMs).toISOString();
+  // Upper bound matters: every caller filters to [start, windowEnd)
+  // anyway, and without it a single-hour rollup build for an old hour
+  // fetches every session from that hour to now.
+  const fetchEnd = new Date(windowEnd).toISOString();
   interface Row extends Record<string, unknown> {
     started_at: string; duration_ms: number | null; referrer: string | null; page_url: string | null;
     visitor_key: string; first_seen_at: string; insights: { kind?: string }[] | null;
@@ -285,7 +289,8 @@ export async function timelineRowsForProject(projectId: string, windowEnd: numbe
       SELECT min(s2.started_at) AS at FROM ${schema.sessions} s2
       WHERE s2.project_id = s.project_id AND coalesce(s2.user_id, s2.anon_id) = coalesce(s.user_id, s.anon_id)
     ) first_seen ON true
-    WHERE s.project_id = ${projectId} AND s.event_count > 0 AND s.started_at >= ${fetchStart}::timestamptz
+    WHERE s.project_id = ${projectId} AND s.event_count > 0
+      AND s.started_at >= ${fetchStart}::timestamptz AND s.started_at < ${fetchEnd}::timestamptz
   `);
   const rows: Row[] = Array.isArray(res) ? res : (res as unknown as { rows: Row[] }).rows ?? [];
   return rows.map((r) => {

@@ -134,11 +134,30 @@ export async function timelineFromRollups(
   // Coverage is measured from the window's first hour that could have a
   // rollup: bucket alignment (weekly especially) and the previous-window
   // comparison can reach back before the project's first session — those
-  // hours legitimately have no rows and count as zero.
-  const [minRow] = await db.select({ min: sql<string | null>`min(${schema.timelineRollups.hourStart})::text` })
-    .from(schema.timelineRollups).where(eq(schema.timelineRollups.projectId, projectId));
-  if (!minRow?.min) return null;
-  const minHour = new Date(minRow.min).getTime();
+  // hours legitimately have no rows and count as zero. The anchor is the
+  // FIRST PLAUSIBLE SESSION hour (same clock-skew guard as the builder),
+  // NOT the earliest existing rollup row — anchoring on the rollups
+  // themselves once silently hid a backfill gap: history older than the
+  // oldest built hour passed the check and vanished from 30d/all charts.
+  interface MinRow extends Record<string, unknown> { min_hour: string | null }
+  const minRes = await db.execute<MinRow>(sql`
+    SELECT date_trunc('hour', min(s.started_at))::text AS min_hour
+    FROM ${schema.sessions} s
+    WHERE s.project_id = ${projectId} AND s.event_count > 0
+      AND s.started_at >= (SELECT p.created_at FROM ${schema.projects} p WHERE p.id = ${projectId})
+  `);
+  const minRows: MinRow[] = Array.isArray(minRes) ? minRes : (minRes as unknown as { rows: MinRow[] }).rows ?? [];
+  // No surviving raw sessions (all pruned by retention): rollups are the
+  // only history left — trust them from their own start.
+  let minHour: number;
+  if (minRows[0]?.min_hour) {
+    minHour = new Date(minRows[0].min_hour).getTime();
+  } else {
+    const [minRoll] = await db.select({ min: sql<string | null>`min(${schema.timelineRollups.hourStart})::text` })
+      .from(schema.timelineRollups).where(eq(schema.timelineRollups.projectId, projectId));
+    if (!minRoll?.min) return null;
+    minHour = new Date(minRoll.min).getTime();
+  }
 
   const realWindowMs = windowEnd - alignedStart;
   const prevStart = alignedStart - realWindowMs;
