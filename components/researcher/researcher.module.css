@@ -243,23 +243,30 @@
 .wsShared { font-size: 11.5px; color: #047857; margin-right: 2px; }
 
 .wsThread { flex: 1; overflow-y: auto; }
-.wsThreadInner { max-width: 880px; margin: 0 auto; padding: 26px 32px 40px; display: flex; flex-direction: column; gap: 28px; }
+/* Fluid column: grows with the viewport instead of sitting as a fixed
+   880px island on a wide monitor, caps out so lines don't run too long
+   on an ultrawide. */
+.wsThreadInner { max-width: min(1040px, 92vw); margin: 0 auto; padding: 26px 32px 40px; display: flex; flex-direction: column; gap: 28px; }
 .wsInput { flex-shrink: 0; padding: 12px 32px 26px; background: linear-gradient(180deg, transparent, var(--background) 40%); }
-.wsInput .inRow { max-width: 820px; margin: 0 auto; }
+.wsInput .inRow { max-width: min(980px, 88vw); margin: 0 auto; }
 .wsInput .inRow input { padding: 13px 20px; box-shadow: 0 4px 24px rgba(9, 9, 11, .05); }
 
 /* conversation scale-ups inside the workspace scope */
 .ws .hello { padding-top: 10vh; text-align: center; }
 .ws .hello h2 { font-size: 27px; letter-spacing: -.01em; margin-bottom: 6px; }
 .ws .noticed { margin-top: 26px; }
-.ws .obs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 660px; margin: 0 auto; }
-.ws .obsBtn { border-radius: 14px; padding: 14px 16px; }
+.ws .obs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: min(680px, 90%); margin: 0 auto; }
+.ws .obsBtn { border-radius: 14px; padding: 14px 16px; font-size: 14.5px; }
 .ws .obsBtn:hover { transform: translateY(-1px); }
 .ws .wayfind { margin-top: 20px; }
-.ws .msgUser { max-width: 66%; font-size: 14px; border-radius: 16px 16px 4px 16px; }
-.ws .msgAi { padding-left: 18px; }
-.ws .prose { font-size: 14.5px; max-width: 70ch; }
+.ws .msgUser { max-width: 70%; font-size: 15px; border-radius: 16px 16px 4px 16px; }
+.ws .msgAi { padding-left: 18px; max-width: 100%; }
+/* No ch-cap: fill the fluid column's actual width instead of stalling
+   at a fixed reading measure that looked orphaned in the wide box. */
+.ws .prose { font-size: 15.5px; line-height: 1.7; max-width: 100%; }
 .ws .hEmpty { padding: 8px 0; font-size: 12.5px; }
+.ws .box { max-width: 100%; }
+.ws .boxBody { overflow-x: auto; }
 
 /* ---- rich research boxes (workspace + share only; drawer skips them) ---- */
 .box { border: 1px solid var(--border); border-radius: 14px; background: var(--background); margin-top: 14px; overflow: hidden; animation: rise .4s; }

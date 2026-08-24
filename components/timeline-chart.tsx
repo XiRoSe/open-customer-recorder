@@ -9,7 +9,6 @@ import { SOURCE_CATEGORIES, SOURCE_META } from '@/lib/traffic-source';
 import { TAG_COLOR_HEX, isValidTagColor } from '@/lib/tag-colors';
 
 const W = 760;
-const H = 430;
 const PAD_L = 40;
 const PAD_R = 12;
 const PAD_T = 20;
@@ -63,6 +62,9 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
 }) {
   const router = useRouter();
   const Wrap: React.ElementType = embedded ? 'div' : Card;
+  // A flatter aspect ratio inside a Researcher box — the full 430px-tall
+  // chart towers over a chat bubble at the box's narrower width.
+  const H = embedded ? 260 : 430;
   const [metric, setMetric] = useState<TimelineMetric>(initialMetric ?? 'sessions');
   const [hover, setHover] = useState<Hover | null>(null);
 

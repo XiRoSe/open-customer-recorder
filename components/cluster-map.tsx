@@ -35,7 +35,6 @@ const DIMENSION_GLOSSARY: Record<string, string> = {
 };
 
 const W = 760;
-const H = 460;
 const PAD = 40;
 // Muted brass for the instrument lines — the "clean steampunk" accent.
 const BRASS = '#B08D57';
@@ -60,6 +59,9 @@ export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension
 }) {
   const router = useRouter();
   const Wrap: React.ElementType = embedded ? 'div' : Card;
+  // A flatter aspect ratio inside a Researcher box — the full 460px-tall
+  // map towers over a chat bubble at the box's narrower width.
+  const H = embedded ? 300 : 460;
   const startDim = dims.find((d) => d.dimension === initialDimension)?.dimension ?? dims[0]?.dimension ?? 'overall';
   const [dimKey, setDimKey] = useState(startDim);
   const [hover, setHover] = useState<HoverInfo | null>(null);
