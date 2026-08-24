@@ -415,6 +415,8 @@ const getClusters: ToolSpec = {
         window: range === 'all'
           ? 'full recorded history'
           : `${rangeLabel} — counts are segment members ACTIVE in this window (clustering itself spans full history)`,
+        // Precomputed so the model never has to sum segment rows itself.
+        totalClusteredVisitors: segments.reduce((s, x) => s + x.size, 0),
         ...(spotlit ? { focusedSegment: { name: spotlit.name, size: spotlit.size, description: spotlit.description, analysis: spotlit.analysis ? spotlit.analysis.slice(0, 400) : null } } : {}),
         segments: segments.map((s) => ({
           name: s.name,
