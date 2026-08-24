@@ -145,6 +145,8 @@ export function useResearcherChat(projectId: string | null, opts?: { initialThre
           if (ev.type === 'meta') {
             setThreadId(ev.threadId);
             setThreadTitle(ev.title);
+          } else if (ev.type === 'queued') {
+            updateLive({ statusLabel: `Queued — ${ev.position === 1 ? 'next up' : `${ev.position} ahead in line`}…` });
           } else if (ev.type === 'tool') {
             if (ev.status === 'start') updateLive({ statusLabel: `${ev.label}…` });
             else {

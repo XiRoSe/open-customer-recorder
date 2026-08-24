@@ -54,9 +54,15 @@ export interface AssistantPayload {
   interrupted?: boolean;
 }
 
-/** SSE events, in emission order: meta → tool* → block* → token* → done. */
+/** SSE events, in emission order: meta → [queued] → tool* → token* → block* → done.
+ * Blocks (the "artifacts") are held back and emitted only after every
+ * token has streamed — the prose always finishes before any evidence
+ * box appears. */
 export type ResearcherEvent =
   | { type: 'meta'; threadId: string; title: string }
+  /** Every interactive slot is busy; this run is FIFO-queued rather than
+   * rejected outright. Emitted once, right after meta. */
+  | { type: 'queued'; position: number }
   | { type: 'tool'; name: string; label: string; status: 'start' | 'done' | 'error'; ms?: number }
   | { type: 'block'; block: ResearcherBlock }
   | { type: 'token'; text: string }

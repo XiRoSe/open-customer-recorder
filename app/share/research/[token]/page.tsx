@@ -15,7 +15,12 @@ export default async function SharedResearchPage(props: { params: Promise<{ toke
 
   return (
     <div className={styles.ws}>
-      <main className={styles.wsMain} style={{ margin: '0 auto', maxWidth: 1000 }}>
+      {/* .wsMain spans the full viewport width (as it does in the real
+          workspace) — the actual overflow-y:auto element is inside it, so
+          the native scrollbar lands at the true browser edge. Content
+          centers itself independently (this header block + the
+          conversation's own max-width), never the scroll container. */}
+      <main className={styles.wsMain}>
         <div className={styles.wsHead}>
           <span className={styles.wsWordmark}>MEGA RECORDER<small>Researcher · shared read-only</small></span>
         </div>

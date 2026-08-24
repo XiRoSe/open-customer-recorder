@@ -18,18 +18,56 @@ export interface RunResult {
 
 // One interactive lane by default: with LLAMA_ARG_PARALLEL=2 the other
 // slot belongs to background summaries, so a question never queues
-// behind a 25s vision job. Overflow gets an honest "busy" instead of a
-// silent hang.
+// behind a background job. A second concurrent QUESTION doesn't get
+// rejected outright either — it's held in a small FIFO queue and
+// started the moment the slot frees, so two people (or two tabs) using
+// the Researcher at once both get real answers without a manual retry.
+// Only once the queue itself is full does a request get an immediate,
+// honest "busy".
 const MAX_CONCURRENT = Math.max(1, parseInt(process.env.RESEARCHER_CONCURRENCY || '1', 10) || 1);
+const MAX_QUEUE = 12;
+const QUEUE_TIMEOUT_MS = 90_000;
 let active = 0;
 
-export function tryAcquireSlot(): boolean {
-  if (active >= MAX_CONCURRENT) return false;
-  active++;
-  return true;
+interface Waiter { resolve: (v: 'ok' | 'timeout') => void; timer: ReturnType<typeof setTimeout> }
+const waiters: Waiter[] = [];
+
+export interface SlotClaim {
+  /** Resolves once a slot is granted ('ok') or the wait exceeded the cap
+   * ('timeout') — never rejects. */
+  ready: Promise<'ok' | 'timeout'>;
+  /** 1-based queue position at claim time; 0 = started immediately. */
+  position: number;
 }
+
+/** Null only when the queue itself is already full (MAX_QUEUE waiters) —
+ * that's the one case still worth an immediate "busy" rather than making
+ * someone wait behind a dozen others. */
+export function acquireSlot(): SlotClaim | null {
+  if (active < MAX_CONCURRENT) {
+    active++;
+    return { ready: Promise.resolve('ok'), position: 0 };
+  }
+  if (waiters.length >= MAX_QUEUE) return null;
+  const position = waiters.length + 1;
+  let waiter!: Waiter;
+  const ready = new Promise<'ok' | 'timeout'>((resolve) => {
+    waiter = {
+      resolve: (v) => { if (v === 'ok') active++; resolve(v); },
+      timer: setTimeout(() => {
+        const idx = waiters.indexOf(waiter);
+        if (idx >= 0) { waiters.splice(idx, 1); waiter.resolve('timeout'); }
+      }, QUEUE_TIMEOUT_MS),
+    };
+  });
+  waiters.push(waiter);
+  return { ready, position };
+}
+
 export function releaseSlot(): void {
   active = Math.max(0, active - 1);
+  const next = waiters.shift();
+  if (next) { clearTimeout(next.timer); next.resolve('ok'); }
 }
 
 const RunState = Annotation.Root({
@@ -87,8 +125,11 @@ export async function runResearch(opts: {
         emit({ type: 'tool', name: tool.name, label: tool.label, status: 'done', ms });
         outcomes.push(outcome);
         allFailed = false;
+        // Held back on purpose — blocks appear only after the composer's
+        // prose has fully streamed (flushed at the end of composerNode).
+        // Tool-status footprints above still update live throughout.
         for (const b of outcome.blocks) {
-          if (blocks.length < 6) { blocks.push(b); emit({ type: 'block', block: b }); }
+          if (blocks.length < 6) blocks.push(b);
         }
         citations.push(outcome.citation);
         if (outcome.caveat) caveats.push(outcome.caveat);
@@ -112,7 +153,7 @@ export async function runResearch(opts: {
         emit({ type: 'tool', name: tool.name, label: tool.label, status: 'done', ms });
         outcomes.push(outcome);
         for (const b of outcome.blocks) {
-          if (blocks.length < 6) { blocks.push(b); emit({ type: 'block', block: b }); }
+          if (blocks.length < 6) blocks.push(b);
         }
         citations.push(outcome.citation);
         if (outcome.caveat) caveats.push(outcome.caveat);
@@ -150,8 +191,8 @@ export async function runResearch(opts: {
         matchCount: p?.matchCount ?? 0,
         approx: p?.approx ?? true,
       };
+      // Held back like every other block — appears after the text below.
       blocks.push(draftBlock);
-      emit({ type: 'block', block: draftBlock });
     }
     return { outcomes };
   };
@@ -160,40 +201,49 @@ export async function runResearch(opts: {
     throwIfAborted();
     const plan = state.plan!;
     const started = Date.now();
-    let content: string;
+    let content = '';
     const draftBlock = blocks.find((b) => b.type === 'tagDraft');
-    // No hardcoded smalltalk shortcut here on purpose: it used to fire for
-    // ANY zero-outcome turn the router labeled "smalltalk", including real
-    // contextual follow-ups ("what does it mean?") that the router
-    // sometimes mislabels — discarding the conversation history entirely
-    // and giving a canned brush-off instead of an answer. The composer LLM
-    // always runs now; its system prompt covers both genuine smalltalk and
-    // history-grounded follow-ups explicitly.
-    if (draftBlock && draftBlock.type === 'tagDraft') {
-      // Tag flow speaks in the mock's exact voice, deterministically —
-      // crisp, correct, and no LLM latency between preview and Apply.
-      const preview = state.outcomes.find((o) => 'tagPreview' in o.facts);
-      const p = preview?.facts.tagPreview as { matchCount: number; visitorCount?: number; approx: boolean } | undefined;
-      const what = draftBlock.kind === 'url_contains'
-        ? `every future visit touching “${draftBlock.value}”`
-        : `every visitor reaching ${draftBlock.value}+ sessions`;
-      const visitors = p?.visitorCount ? ` from ${p.visitorCount} visitors` : '';
-      content = p && p.matchCount > 0
-        ? `Ready — it would tag ${p.matchCount}${p.approx ? '+' : ''} past sessions${visitors}, plus ${what}.`
-        : `Ready — nothing matches yet, but the rule will catch ${what} from now on.`;
-      emit({ type: 'token', text: content });
-    } else {
-      content = await composeAnswer({
-        question: state.question,
-        plan,
-        outcomes: state.outcomes,
-        historyBrief: state.historyBrief,
-        onToken: (t) => emit({ type: 'token', text: t }),
-        signal,
-        fetchFn,
-      });
+    try {
+      // No hardcoded smalltalk shortcut here on purpose: it used to fire
+      // for ANY zero-outcome turn the router labeled "smalltalk",
+      // including real contextual follow-ups ("what does it mean?") that
+      // the router sometimes mislabels — discarding the conversation
+      // history entirely and giving a canned brush-off instead of an
+      // answer. The composer LLM always runs now; its system prompt
+      // covers both genuine smalltalk and history-grounded follow-ups.
+      if (draftBlock && draftBlock.type === 'tagDraft') {
+        // Tag flow speaks in the mock's exact voice, deterministically —
+        // crisp, correct, and no LLM latency between preview and Apply.
+        const preview = state.outcomes.find((o) => 'tagPreview' in o.facts);
+        const p = preview?.facts.tagPreview as { matchCount: number; visitorCount?: number; approx: boolean } | undefined;
+        const what = draftBlock.kind === 'url_contains'
+          ? `every future visit touching “${draftBlock.value}”`
+          : `every visitor reaching ${draftBlock.value}+ sessions`;
+        const visitors = p?.visitorCount ? ` from ${p.visitorCount} visitors` : '';
+        content = p && p.matchCount > 0
+          ? `Ready — it would tag ${p.matchCount}${p.approx ? '+' : ''} past sessions${visitors}, plus ${what}.`
+          : `Ready — nothing matches yet, but the rule will catch ${what} from now on.`;
+        emit({ type: 'token', text: content });
+      } else {
+        content = await composeAnswer({
+          question: state.question,
+          plan,
+          outcomes: state.outcomes,
+          historyBrief: state.historyBrief,
+          onToken: (t) => emit({ type: 'token', text: t }),
+          signal,
+          fetchFn,
+        });
+      }
+    } finally {
+      // Runs even if composeAnswer threw from a mid-stream Stop: the
+      // blocks the executor already computed (chart data, evidence,
+      // session rows) still reveal themselves rather than vanishing
+      // along with the aborted call. Text-before-artifact is preserved
+      // either way — nothing here emits before the prose already has.
+      footprints.push({ name: 'compose', label: 'Wrote the answer', ms: Date.now() - started });
+      for (const b of blocks) emit({ type: 'block', block: b });
     }
-    footprints.push({ name: 'compose', label: 'Wrote the answer', ms: Date.now() - started });
     return { content };
   };
 
