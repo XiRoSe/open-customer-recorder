@@ -80,8 +80,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           emit: send,
           signal: abort.signal,
         });
-        const messageId = await appendMessage(thread.id, 'assistant', content, payload);
-        send({ type: 'done', messageId, content, payload });
+        if (content || payload.blocks.length > 0) {
+          const messageId = await appendMessage(thread.id, 'assistant', content, payload);
+          send({ type: 'done', messageId, content, payload });
+        } else {
+          // Aborted before anything landed — never persist a blank history
+          // entry; tell the client plainly instead of silently closing.
+          send({ type: 'error', message: 'Stopped.' });
+        }
       } catch (e) {
         console.warn('[researcher] run failed', e instanceof Error ? e.message : e);
         send({

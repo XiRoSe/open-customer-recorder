@@ -162,10 +162,14 @@ export async function runResearch(opts: {
     const started = Date.now();
     let content: string;
     const draftBlock = blocks.find((b) => b.type === 'tagDraft');
-    if (plan.intent === 'smalltalk' && state.outcomes.length === 0) {
-      content = 'Happy to help — ask me anything about your sessions, visitors, trends, or segments.';
-      emit({ type: 'token', text: content });
-    } else if (draftBlock && draftBlock.type === 'tagDraft') {
+    // No hardcoded smalltalk shortcut here on purpose: it used to fire for
+    // ANY zero-outcome turn the router labeled "smalltalk", including real
+    // contextual follow-ups ("what does it mean?") that the router
+    // sometimes mislabels — discarding the conversation history entirely
+    // and giving a canned brush-off instead of an answer. The composer LLM
+    // always runs now; its system prompt covers both genuine smalltalk and
+    // history-grounded follow-ups explicitly.
+    if (draftBlock && draftBlock.type === 'tagDraft') {
       // Tag flow speaks in the mock's exact voice, deterministically —
       // crisp, correct, and no LLM latency between preview and Apply.
       const preview = state.outcomes.find((o) => 'tagPreview' in o.facts);

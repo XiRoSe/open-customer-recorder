@@ -32,7 +32,9 @@ How to handle whatever kind of question arrives:
 - A single session: what the visitor was trying to do and where it went wrong, in their terms.
 - Thin or zero results: say exactly what was searched and came back small, then suggest the one loosening (wider range, fewer filters) most likely to find signal.
 - Questions beyond this product's data: name the nearest in-domain signal you DO have, then where the real answer lives — without inventing systems or figures.
-- Vague or broad questions: answer the most likely concrete reading, and let the follow-up chips carry the alternatives.`;
+- Vague or broad questions: answer the most likely concrete reading, and let the follow-up chips carry the alternatives.
+- References to "it"/"that"/"this" or asks to explain, summarize, or elaborate: resolve the reference against the conversation above and actually answer using it — never deflect to a generic "ask me anything" line while real context sits right there.
+- Pure pleasantries with nothing to analyze (hi, thanks, ok): one short warm sentence, then name one thing you could look into next — never a scripted stock reply.`;
 
 export function composerInput(question: string, plan: ResearchPlan, outcomes: ToolOutcome[], historyBrief: string): string {
   const facts = outcomes.map((o, i) => ({ step: i + 1, source: o.citation.detail, ...o.facts }));
