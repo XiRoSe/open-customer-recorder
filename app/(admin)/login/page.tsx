@@ -28,16 +28,16 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-[calc(100vh-8rem)] items-center justify-center p-6">
-      <Card className="w-full max-w-sm p-8 space-y-6">
-        <div className="space-y-1.5">
+      <Card className="w-full max-w-sm p-8 space-y-5">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
           <p className="text-sm text-muted-foreground">Sign in to your dashboard.</p>
-          <div aria-hidden className="flex items-center gap-1.5 pt-2">
+          <div aria-hidden className="flex items-center gap-1.5 pt-3">
             <div className="h-0.5 w-16 shrink-0 rounded-full bg-gradient-to-r from-[#B08D57] to-[#B08D57]/0" />
             <div className="h-px flex-1 bg-gradient-to-r from-border to-transparent" />
           </div>
         </div>
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-3.5">
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" autoComplete="email" placeholder="you@company.com"
@@ -49,13 +49,15 @@ export default function LoginPage() {
               value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
-          <Button
-            type="submit"
-            disabled={busy}
-            className="w-full cursor-pointer transition-all hover:bg-primary/85 hover:shadow-sm active:scale-[.99] disabled:cursor-default"
-          >
-            {busy ? 'Logging in…' : 'Log in'}
-          </Button>
+          <div className="pt-1.5">
+            <Button
+              type="submit"
+              disabled={busy}
+              className="w-full cursor-pointer transition-all hover:bg-primary/85 hover:shadow-sm active:scale-[.99] disabled:cursor-default"
+            >
+              {busy ? 'Logging in…' : 'Log in'}
+            </Button>
+          </div>
         </form>
       </Card>
     </main>
