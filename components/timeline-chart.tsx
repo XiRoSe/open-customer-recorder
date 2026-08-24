@@ -46,7 +46,7 @@ const FRICTION_ORDER: [string, string, string][] = [
  * passed in as a slot, measure chips beside them) so the selectors sit
  * together outside the chart card; trend chips render inside the card.
  * Hover a bar for the breakdown; click to open that time slice. */
-export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot, patternsSlot, initialMetric }: {
+export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, rangeSlot, analysisSlot, trendsSlot, patternsSlot, initialMetric, embedded }: {
   buckets: TimelineBucket[];
   bucketMs: number;
   sessionsBasePath: string;
@@ -57,8 +57,12 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
   patternsSlot?: React.ReactNode;
   /** Preselect a measure (?measure= deep links, e.g. from the Researcher). */
   initialMetric?: TimelineMetric;
+  /** Rendered inside a Researcher box: drop the Card chrome (the box
+   * already frames it) — everything else behaves identically. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
+  const Wrap: React.ElementType = embedded ? 'div' : Card;
   const [metric, setMetric] = useState<TimelineMetric>(initialMetric ?? 'sessions');
   const [hover, setHover] = useState<Hover | null>(null);
 
@@ -169,7 +173,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
 
       {analysisSlot}
 
-      <Card className="p-4 space-y-3">
+      <Wrap className={embedded ? 'space-y-3' : 'p-4 space-y-3'}>
       {trendsSlot}
       <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
@@ -283,7 +287,7 @@ export function TimelineChart({ buckets, bucketMs, sessionsBasePath, tagMeta, ra
       </div>
 
       {patternsSlot}
-      </Card>
+      </Wrap>
     </div>
   );
 }

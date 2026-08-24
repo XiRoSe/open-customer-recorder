@@ -46,7 +46,7 @@ interface HoverInfo { visitorKey: string; excerpt: string; segmentId: string | n
  * glide to that dimension's positions, recolored by its segments. Owns
  * the control row (range pills passed in as a slot, dimension chips
  * beside them) so the selectors sit together outside the map card. */
-export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension, initialSegment }: {
+export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension, initialSegment, embedded }: {
   dims: DimensionData[];
   sessionsBasePath: string;
   rangeSlot?: React.ReactNode;
@@ -54,8 +54,12 @@ export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension
   initialDimension?: string;
   /** Spotlight a segment by name on load (?segment= deep links). */
   initialSegment?: string;
+  /** Rendered inside a Researcher box: drop the Card chrome (the box
+   * already frames it) — everything else behaves identically. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
+  const Wrap: React.ElementType = embedded ? 'div' : Card;
   const startDim = dims.find((d) => d.dimension === initialDimension)?.dimension ?? dims[0]?.dimension ?? 'overall';
   const [dimKey, setDimKey] = useState(startDim);
   const [hover, setHover] = useState<HoverInfo | null>(null);
@@ -118,7 +122,7 @@ export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension
         </div>
       </div>
 
-      <Card className="p-4 space-y-3">
+      <Wrap className={embedded ? 'space-y-3' : 'p-4 space-y-3'}>
       {/* batch-level analyst read for this dimension */}
       {dim.analysis && (
         <div className="rounded-md bg-muted/50 border-l-2 border-foreground/70 px-4 py-3">
@@ -222,7 +226,7 @@ export function ClusterMap({ dims, sessionsBasePath, rangeSlot, initialDimension
           </button>
         ))}
       </div>
-      </Card>
+      </Wrap>
     </div>
   );
 }

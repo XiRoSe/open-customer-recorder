@@ -6,7 +6,7 @@
 import { sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { overviewForProject } from '@/lib/overview';
-import { timelineBundleForProject, TIMELINE_RANGES, resolveRangeKey, deviceOf, pathOfUrl } from '@/lib/timeline';
+import { timelineBundleForProject, TIMELINE_RANGES, resolveRangeKey, deviceOf, pathOfUrl, type TimelinePatterns } from '@/lib/timeline';
 import { categorizeSource } from '@/lib/traffic-source';
 import { segmentsForProject, clustersDataForProject, activeVisitorKeys, filterDimsByVisitors, FACET_DIMENSIONS, type Dimension } from '@/lib/user-segments';
 import type { Citation, ResearcherBlock, ResearchPlan, SessionItem } from './types';
@@ -121,8 +121,38 @@ const getTimeline: ToolSpec = {
     const t = data.totals;
     const rangeLabel = resolved.label;
     const focus = str(args.focus); // sources|devices|browsers|countries|referrers|entries|friction|tags
+    const measureFor = focus === 'friction' ? 'frustration' : focus === 'devices' ? 'clicks' : focus === 'tags' ? 'tags' : null;
+    const href = `/projects/${projectId}/timeline?range=${range}${measureFor ? `&measure=${measureFor}` : ''}`;
     const blocks: ResearcherBlock[] = [];
-    const add = (b: ResearcherBlock | null) => { if (b && blocks.length < 3) blocks.push(b); };
+    // The rich box: the workspace embeds the REAL TimelineChart with
+    // these buckets; the drawer ignores this block.
+    if (data.buckets.length > 1) {
+      const unit = data.bucketMs <= 3_600_000 ? 'hourly' : data.bucketMs <= 86_400_000 ? 'daily' : 'weekly';
+      blocks.push({
+        type: 'chart',
+        title: `${rangeLabel}`,
+        windowNote: `${unit} · ${range === 'all' ? 'full history' : 'vs the previous window'}`,
+        bucketMs: data.bucketMs,
+        buckets: data.buckets.slice(-64),
+        tagMeta: data.tagMeta,
+        initialMetric: measureFor,
+        href,
+      });
+    }
+    // Cached analyst read for this window, when one exists (fixed
+    // ranges only — never generated here).
+    const [cached] = await db.select().from(schema.timelineAnalyses)
+      .where(sql`${schema.timelineAnalyses.projectId} = ${projectId} AND ${schema.timelineAnalyses.rangeKey} = ${range}`)
+      .limit(1);
+    if (cached?.analysis) {
+      blocks.push({
+        type: 'analysis',
+        title: `Analyst read · ${rangeLabel}`,
+        text: cached.analysis,
+        patterns: (cached.patterns ?? null) as TimelinePatterns | null,
+      });
+    }
+    const add = (b: ResearcherBlock | null) => { if (b && blocks.length < 4) blocks.push(b); };
     const catalog: Record<string, () => ResearcherBlock | null> = {
       sources: () => evidenceFrom(`By source · ${rangeLabel}`, t.bySource as Record<string, number>),
       devices: () => evidenceFrom(`By device · ${rangeLabel}`, t.byDevice),
@@ -153,10 +183,7 @@ const getTimeline: ToolSpec = {
         detail: `Timeline aggregates · ${rangeLabel}${focus ? ` · focus ${focus}` : ''}`,
         // Preconfigured view: the Timeline page opens on the measure the
         // question was about, not just the range.
-        href: `/projects/${projectId}/timeline?range=${range}${
-          focus === 'friction' ? '&measure=frustration'
-          : focus === 'devices' ? '&measure=clicks'
-          : ''}`,
+        href,
       },
       caveat: sampleCaveat(t.sessions, rangeLabel),
     };
@@ -383,11 +410,13 @@ const getClusters: ToolSpec = {
     const rangeLabel = range === 'all' ? 'full history' : resolved.label;
     let segments = await segmentsForProject(projectId, dimension);
     const totalByName = new Map(segments.map((s) => [s.name, s.size]));
+    // Points power the workspace's embedded cluster map — same data,
+    // same window filter, as the Clusters page itself.
+    const allDims = await clustersDataForProject(projectId);
+    const dims = range !== 'all'
+      ? filterDimsByVisitors(allDims, await activeVisitorKeys(projectId, new Date(Date.now() - resolved.windowMs)))
+      : allDims;
     if (range !== 'all') {
-      const dims = filterDimsByVisitors(
-        await clustersDataForProject(projectId),
-        await activeVisitorKeys(projectId, new Date(Date.now() - resolved.windowMs)),
-      );
       segments = (dims.find((d) => d.dimension === dimension)?.segments ?? [])
         .slice().sort((a, b) => b.size - a.size);
     }
@@ -409,6 +438,19 @@ const getClusters: ToolSpec = {
     if (dimension !== 'overall') params.set('dimension', dimension);
     if (spotlit) params.set('segment', spotlit.name);
     if (range !== 'all') params.set('range', range);
+    const mapHref = `/projects/${projectId}/clusters${params.size ? `?${params}` : ''}`;
+    const blocks: ResearcherBlock[] = [];
+    if (dims.some((d) => d.points.length > 0)) {
+      blocks.push({
+        type: 'clusterMap',
+        title: rangeLabel,
+        windowNote: spotlit ? `“${spotlit.name}” spotlighted` : `${dimension} dimension`,
+        dims: dims.map((d) => ({ ...d, points: d.points.slice(0, 400) })),
+        initialDimension: dimension,
+        initialSegment: spotlit?.name ?? null,
+        href: mapHref,
+      });
+    }
     return {
       facts: {
         dimension,
@@ -428,11 +470,11 @@ const getClusters: ToolSpec = {
         })),
         dimensionAnalysis: dimAnalysis?.analysis?.slice(0, 400) || null,
       },
-      blocks: evidence ? [evidence] : [],
+      blocks: evidence ? [...blocks, evidence] : blocks,
       citation: {
         label: 'Clusters',
         detail: `Behavioral segments · ${dimension} dimension · ${rangeLabel}${spotlit ? ` · “${spotlit.name}” spotlighted` : ''}`,
-        href: `/projects/${projectId}/clusters${params.size ? `?${params}` : ''}`,
+        href: mapHref,
       },
       caveat: segments.length === 0
         ? (range === 'all'

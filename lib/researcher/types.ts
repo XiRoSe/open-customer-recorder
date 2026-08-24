@@ -1,6 +1,9 @@
 // Shared shapes for the Researcher: the read-only AI drawer that answers
 // questions over sessions, visitors, timeline, and clusters. Client-safe —
-// no db or node imports here.
+// no db or node imports here (the two type-only imports below erase at
+// compile time and pull no server code into the browser bundle).
+import type { TimelineBucket, TimelinePatterns } from '@/lib/timeline';
+import type { DimensionData } from '@/lib/user-segments';
 
 /** One row in an EVIDENCE block: label + count, bar scaled to max. */
 export interface EvidenceRow { label: string; value: number; display?: string }
@@ -9,7 +12,13 @@ export type ResearcherBlock =
   | { type: 'evidence'; title: string; rows: EvidenceRow[] }
   | { type: 'sessions'; title: string; items: SessionItem[] }
   | { type: 'table'; title: string; columns: string[]; rows: string[][] }
-  | { type: 'tagDraft'; draftId: string; name: string; kind: string; value: string; color: string; matchCount: number; approx: boolean };
+  | { type: 'tagDraft'; draftId: string; name: string; kind: string; value: string; color: string; matchCount: number; approx: boolean }
+  // Rich boxes — the full-screen workspace (and the share page) embed
+  // the app's REAL TimelineChart / ClusterMap with this data; the
+  // drawer skips them and keeps its compact previews.
+  | { type: 'chart'; title: string; windowNote: string; bucketMs: number; buckets: TimelineBucket[]; tagMeta: Record<string, { color: string }>; initialMetric: string | null; href: string }
+  | { type: 'clusterMap'; title: string; windowNote: string; dims: DimensionData[]; initialDimension: string | null; initialSegment: string | null; href: string }
+  | { type: 'analysis'; title: string; text: string; patterns: TimelinePatterns | null };
 
 export interface SessionItem {
   id: string;

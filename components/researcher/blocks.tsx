@@ -4,10 +4,19 @@
 // watch, comparison tables, and the tag-draft Apply card. The resolving
 // numbers here are pure presentation — the values arrived precomputed
 // from the executor, the animation just settles onto them.
+//
+// Rich boxes (chart / clusterMap / analysis) wrap the app's REAL
+// TimelineChart / ClusterMap / AnalystReadCard components — the drawer
+// skips them entirely (kept compact); the workspace and share surfaces
+// render them as framed ResearchBoxes.
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Citation, ResearcherBlock } from '@/lib/researcher/types';
 import { TAG_COLOR_HEX, type TagColor } from '@/lib/tag-colors';
+import { TimelineChart } from '@/components/timeline-chart';
+import { ClusterMap } from '@/components/cluster-map';
+import { AnalystReadCard } from '@/components/analyst-read-card';
+import { useSurface } from './surface';
 import styles from './researcher.module.css';
 
 function fmtDur(ms: number | null): string {
@@ -146,16 +155,82 @@ function TagDraftBlock({ block, projectId, threadId }: {
   );
 }
 
+/** The frame every rich box shares: kind label, title, a window note
+ * pill, and the deep link into the real full-page view. */
+function ResearchBox({ kind, title, windowNote, href, children }: {
+  kind: string;
+  title: string;
+  windowNote?: string;
+  href?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={styles.box}>
+      <div className={styles.boxHead}>
+        <span className={styles.boxKind}>{kind}</span>
+        <span className={styles.boxTitle}>{title}</span>
+        {windowNote && <span className={styles.pillNote}><i />{windowNote}</span>}
+        {href && <Link className={styles.boxOpen} href={href} target="_blank" rel="noreferrer">Open full view ↗</Link>}
+      </div>
+      <div className={styles.boxBody}>{children}</div>
+    </div>
+  );
+}
+
+function ChartBox({ block, projectId }: { block: Extract<ResearcherBlock, { type: 'chart' }>; projectId: string }) {
+  return (
+    <ResearchBox kind="Timeline" title={block.title} windowNote={block.windowNote} href={block.href}>
+      <TimelineChart
+        buckets={block.buckets}
+        bucketMs={block.bucketMs}
+        tagMeta={block.tagMeta}
+        sessionsBasePath={`/projects/${projectId}/sessions`}
+        initialMetric={block.initialMetric as never}
+        embedded
+      />
+    </ResearchBox>
+  );
+}
+
+function ClusterMapBox({ block, projectId }: { block: Extract<ResearcherBlock, { type: 'clusterMap' }>; projectId: string }) {
+  return (
+    <ResearchBox kind="Clusters" title={block.title} windowNote={block.windowNote} href={block.href}>
+      <ClusterMap
+        dims={block.dims}
+        sessionsBasePath={`/projects/${projectId}/sessions`}
+        initialDimension={block.initialDimension ?? undefined}
+        initialSegment={block.initialSegment ?? undefined}
+        embedded
+      />
+    </ResearchBox>
+  );
+}
+
+function AnalysisBox({ block }: { block: Extract<ResearcherBlock, { type: 'analysis' }> }) {
+  return (
+    <ResearchBox kind="Analyst read" title={block.title}>
+      <AnalystReadCard analysis={block.text} patterns={block.patterns} />
+    </ResearchBox>
+  );
+}
+
 export function BlockView({ block, projectId, threadId }: {
   block: ResearcherBlock;
   projectId: string;
   threadId: string | null;
 }) {
+  // The drawer stays compact — it never renders the rich boxes, only
+  // the surfaces with room for them (workspace, share).
+  const surface = useSurface();
+
   switch (block.type) {
     case 'evidence': return <EvidenceBlock block={block} />;
     case 'sessions': return <SessionsBlock block={block} />;
     case 'table': return <TableBlock block={block} />;
     case 'tagDraft': return <TagDraftBlock block={block} projectId={projectId} threadId={threadId} />;
+    case 'chart': return surface === 'drawer' ? null : <ChartBox block={block} projectId={projectId} />;
+    case 'clusterMap': return surface === 'drawer' ? null : <ClusterMapBox block={block} projectId={projectId} />;
+    case 'analysis': return surface === 'drawer' ? null : <AnalysisBox block={block} />;
     default: return null;
   }
 }

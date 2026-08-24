@@ -88,7 +88,7 @@ export async function runResearch(opts: {
         outcomes.push(outcome);
         allFailed = false;
         for (const b of outcome.blocks) {
-          if (blocks.length < 4) { blocks.push(b); emit({ type: 'block', block: b }); }
+          if (blocks.length < 6) { blocks.push(b); emit({ type: 'block', block: b }); }
         }
         citations.push(outcome.citation);
         if (outcome.caveat) caveats.push(outcome.caveat);
@@ -112,7 +112,7 @@ export async function runResearch(opts: {
         emit({ type: 'tool', name: tool.name, label: tool.label, status: 'done', ms });
         outcomes.push(outcome);
         for (const b of outcome.blocks) {
-          if (blocks.length < 4) { blocks.push(b); emit({ type: 'block', block: b }); }
+          if (blocks.length < 6) { blocks.push(b); emit({ type: 'block', block: b }); }
         }
         citations.push(outcome.citation);
         if (outcome.caveat) caveats.push(outcome.caveat);
