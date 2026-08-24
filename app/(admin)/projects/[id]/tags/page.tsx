@@ -1,21 +1,12 @@
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 import { db, schema } from '@/lib/db';
 import { and, count, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { Card } from '@/components/ui/card';
 import { HeaderRule } from '@/components/header-rule';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableHead, TableHeader, TableRow, TableCell } from '@/components/ui/table';
 import { AddTagRuleForm } from '@/components/add-tag-rule-form';
-import { ToggleTagRuleButton } from '@/components/toggle-tag-rule-button';
-import { RecolorTagRule } from '@/components/recolor-tag-rule';
-import type { TagColor } from '@/lib/tag-colors';
-
-function describeRule(kind: string, value: string): string {
-  if (kind === 'session_count_gte') return `Session count ≥ ${value}`;
-  return `URL contains "${value}"`;
-}
+import { TagRuleRow } from '@/components/tag-rule-row';
 
 export default async function TagsPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -71,17 +62,7 @@ export default async function TagsPage(props: { params: Promise<{ id: string }> 
               <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No tag rules yet.</TableCell></TableRow>
             )}
             {rules.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell><Badge variant={r.color as TagColor}>{r.name}</Badge></TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{describeRule(r.kind, r.value)}</TableCell>
-                <TableCell>
-                  <RecolorTagRule projectId={id} ruleId={r.id} color={r.color as TagColor} />
-                </TableCell>
-                <TableCell>{r.taggedCount}</TableCell>
-                <TableCell>
-                  <ToggleTagRuleButton projectId={id} ruleId={r.id} enabled={r.enabled} />
-                </TableCell>
-              </TableRow>
+              <TagRuleRow key={r.id} projectId={id} rule={r} />
             ))}
           </TableBody>
         </Table>

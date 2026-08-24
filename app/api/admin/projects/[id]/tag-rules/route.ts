@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { and, count, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
-import { applyRuleToExistingSessions, isValidTagColor } from '@/lib/tag-rules';
-
-const VALID_KINDS = new Set(['url_contains', 'session_count_gte']);
+import { applyRuleToExistingSessions, isValidRuleKind, isValidTagColor, RULE_KIND_META, type RuleKind } from '@/lib/tag-rules';
 
 async function ownedProject(projectId: string, orgId: string) {
   const [project] = await db.select({ id: schema.projects.id })
@@ -52,14 +50,19 @@ export async function POST(req: NextRequest | Request, ctx: { params: Promise<{ 
     return NextResponse.json({ error: 'invalid body' }, { status: 400 });
   }
   const name = typeof body.name === 'string' ? body.name.trim() : '';
-  const kind = typeof body.kind === 'string' ? body.kind : '';
+  const kindIn = typeof body.kind === 'string' ? body.kind : '';
   const value = typeof body.value === 'string' ? body.value.trim() : '';
   const color = typeof body.color === 'string' ? body.color : 'green';
-  if (!name || !VALID_KINDS.has(kind) || !value) {
-    return NextResponse.json({ error: 'name, kind (url_contains|session_count_gte), value are required' }, { status: 400 });
+  if (!name || !isValidRuleKind(kindIn) || !value) {
+    return NextResponse.json({ error: `name, kind (${Object.keys(RULE_KIND_META).join('|')}), value are required` }, { status: 400 });
   }
-  if (kind === 'session_count_gte' && !Number.isFinite(parseInt(value, 10))) {
-    return NextResponse.json({ error: 'value must be a number for session_count_gte' }, { status: 400 });
+  const kind: RuleKind = kindIn;
+  const meta = RULE_KIND_META[kind];
+  if (meta.valueType === 'number' && !Number.isFinite(parseInt(value, 10))) {
+    return NextResponse.json({ error: `value must be a number for ${kind}` }, { status: 400 });
+  }
+  if (meta.valueType === 'select' && !meta.options?.includes(value)) {
+    return NextResponse.json({ error: `value must be one of ${meta.options?.join(', ')} for ${kind}` }, { status: 400 });
   }
   if (!isValidTagColor(color)) {
     return NextResponse.json({ error: 'invalid color' }, { status: 400 });

@@ -3,7 +3,15 @@ import { gzipSync } from 'node:zlib';
 import {
   matchesUrlContains,
   matchesSessionCount,
+  matchesBrowserIs,
+  matchesCountryIs,
+  matchesDeviceIs,
+  matchesReferrerContains,
+  matchesSourceIs,
+  matchesDurationGte,
   matchingUrlContainsRules,
+  matchingCreationRules,
+  matchingDurationRules,
   tagSession,
   applyRuleToExistingSessions,
   type TagRule,
@@ -39,9 +47,70 @@ describe('matchesSessionCount', () => {
   });
 });
 
+describe('single-fact matchers', () => {
+  it('matchesBrowserIs is case-insensitive and requires a value', () => {
+    expect(matchesBrowserIs('Chrome', 'chrome')).toBe(true);
+    expect(matchesBrowserIs('Chrome', 'Safari')).toBe(false);
+    expect(matchesBrowserIs('Chrome', null)).toBe(false);
+  });
+
+  it('matchesCountryIs is case-insensitive', () => {
+    expect(matchesCountryIs('us', 'US')).toBe(true);
+    expect(matchesCountryIs('US', 'CA')).toBe(false);
+  });
+
+  it('matchesDeviceIs compares device class case-insensitively', () => {
+    expect(matchesDeviceIs('mobile', 'mobile')).toBe(true);
+    expect(matchesDeviceIs('Mobile', 'mobile')).toBe(true);
+    expect(matchesDeviceIs('desktop', 'mobile')).toBe(false);
+  });
+
+  it('matchesReferrerContains is a case-insensitive substring match', () => {
+    expect(matchesReferrerContains('linkedin', 'https://www.linkedin.com/feed')).toBe(true);
+    expect(matchesReferrerContains('linkedin', null)).toBe(false);
+  });
+
+  it('matchesSourceIs compares source category case-insensitively', () => {
+    expect(matchesSourceIs('ads', 'ads')).toBe(true);
+    expect(matchesSourceIs('ads', 'direct')).toBe(false);
+  });
+
+  it('matchesDurationGte matches at and above the threshold, never below', () => {
+    expect(matchesDurationGte('60', 60)).toBe(true);
+    expect(matchesDurationGte('60', 61)).toBe(true);
+    expect(matchesDurationGte('60', 59)).toBe(false);
+    expect(matchesDurationGte('nope', 100)).toBe(false);
+  });
+});
+
+describe('matchingCreationRules', () => {
+  const rule = (over: Partial<TagRule> = {}): TagRule =>
+    ({ id: 'r1', projectId: 'p1', name: 'Chrome users', kind: 'browser_is', value: 'Chrome', color: 'green', enabled: true, ...over });
+  const ctx = { browser: 'Chrome', country: 'US', device: 'desktop', referrer: 'https://google.com/search', source: 'search' };
+
+  it('matches enabled single-fact rules against the creation context', () => {
+    expect(matchingCreationRules([rule()], ctx).map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('ignores disabled rules and non-creation kinds', () => {
+    expect(matchingCreationRules([rule({ enabled: false })], ctx)).toEqual([]);
+    expect(matchingCreationRules([rule({ kind: 'url_contains', value: 'x' })], ctx)).toEqual([]);
+  });
+});
+
+describe('matchingDurationRules', () => {
+  const rule = (over: Partial<TagRule> = {}): TagRule =>
+    ({ id: 'r1', projectId: 'p1', name: 'Engaged', kind: 'duration_gte', value: '60', color: 'green', enabled: true, ...over });
+
+  it('matches once the duration crosses the threshold', () => {
+    expect(matchingDurationRules([rule()], 60).map((r) => r.id)).toEqual(['r1']);
+    expect(matchingDurationRules([rule()], 30)).toEqual([]);
+  });
+});
+
 describe('matchingUrlContainsRules', () => {
   const rule = (over: Partial<TagRule> = {}): TagRule =>
-    ({ id: 'r1', projectId: 'p1', name: 'Signed up', kind: 'url_contains', value: 'register', enabled: true, ...over });
+    ({ id: 'r1', projectId: 'p1', name: 'Signed up', kind: 'url_contains', value: 'register', color: 'green', enabled: true, ...over });
 
   it('matches a rule against the page url', () => {
     const result = matchingUrlContainsRules([rule()], 'https://example.com/register', []);
@@ -134,5 +203,57 @@ describe.skipIf(!dbReady)('tagSession / applyRuleToExistingSessions', () => {
 
     const secondRun = await applyRuleToExistingSessions(rule);
     expect(secondRun).toBe(0);
+  });
+
+  it('applyRuleToExistingSessions tags matching sessions for browser_is, idempotently', async () => {
+    const { project } = await createOrgWithProject();
+    const [rule] = await db.insert(schema.tagRules).values({ projectId: project.id, name: 'Chrome', kind: 'browser_is', value: 'Chrome' }).returning();
+    const [chromeSession] = await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a1', startedAt: new Date(), browser: 'Chrome',
+    }).returning();
+    await db.insert(schema.sessions).values({ projectId: project.id, anonId: 'a2', startedAt: new Date(), browser: 'Safari' });
+
+    const firstRun = await applyRuleToExistingSessions(rule);
+    expect(firstRun).toBe(1);
+    const taggedIds = (await db.select({ id: schema.sessionTags.sessionId }).from(schema.sessionTags)).map((r) => r.id);
+    expect(taggedIds).toEqual([chromeSession.id]);
+
+    expect(await applyRuleToExistingSessions(rule)).toBe(0);
+  });
+
+  it('applyRuleToExistingSessions tags matching sessions for duration_gte, idempotently', async () => {
+    const { project } = await createOrgWithProject();
+    const [rule] = await db.insert(schema.tagRules).values({ projectId: project.id, name: 'Engaged', kind: 'duration_gte', value: '60' }).returning();
+    const [longSession] = await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a1', startedAt: new Date(), durationMs: 90_000,
+    }).returning();
+    await db.insert(schema.sessions).values({ projectId: project.id, anonId: 'a2', startedAt: new Date(), durationMs: 10_000 });
+
+    const firstRun = await applyRuleToExistingSessions(rule);
+    expect(firstRun).toBe(1);
+    const taggedIds = (await db.select({ id: schema.sessionTags.sessionId }).from(schema.sessionTags)).map((r) => r.id);
+    expect(taggedIds).toEqual([longSession.id]);
+
+    expect(await applyRuleToExistingSessions(rule)).toBe(0);
+  });
+
+  it('applyRuleToExistingSessions tags matching sessions for device_is, idempotently', async () => {
+    const { project } = await createOrgWithProject();
+    const [rule] = await db.insert(schema.tagRules).values({ projectId: project.id, name: 'Mobile', kind: 'device_is', value: 'mobile' }).returning();
+    const [mobileSession] = await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a1', startedAt: new Date(),
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/21A329',
+    }).returning();
+    await db.insert(schema.sessions).values({
+      projectId: project.id, anonId: 'a2', startedAt: new Date(),
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    });
+
+    const firstRun = await applyRuleToExistingSessions(rule);
+    expect(firstRun).toBe(1);
+    const taggedIds = (await db.select({ id: schema.sessionTags.sessionId }).from(schema.sessionTags)).map((r) => r.id);
+    expect(taggedIds).toEqual([mobileSession.id]);
+
+    expect(await applyRuleToExistingSessions(rule)).toBe(0);
   });
 });

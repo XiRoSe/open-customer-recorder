@@ -25,7 +25,9 @@ import { parseUA } from '@/lib/ua';
 import { countryFromHeaders } from '@/lib/geoip';
 import { splitAtCap, cappedDurationMs } from '@/lib/session-cap';
 import { hrefOf, type RawEvent } from '@/lib/url-timeline';
-import { matchesSessionCount, matchingUrlContainsRules, tagSession } from '@/lib/tag-rules';
+import { matchesSessionCount, matchingUrlContainsRules, matchingCreationRules, matchingDurationRules, tagSession } from '@/lib/tag-rules';
+import { deviceOf } from '@/lib/timeline';
+import { categorizeSource } from '@/lib/traffic-source';
 import { isExcluded } from '@/lib/excluded-users';
 
 const MAX_BYTES_PER_SESSION = 10 * 1024 * 1024; // 10 MB
@@ -149,8 +151,9 @@ export async function POST(req: NextRequest | Request) {
     lastActivityAt: now,
   }).onConflictDoNothing().returning({ id: schema.sessions.id });
 
-  // session_count_gte rules only make sense once, when the session is
-  // created — the anon_id's prior-session count can't change mid-session.
+  // session_count_gte and the single-fact rule kinds (browser/country/
+  // device/referrer/source) only make sense once, when the session is
+  // created — none of these inputs change mid-session.
   if (inserted.length > 0) {
     const [{ value: sessionNumber }] = await db.select({ value: count() }).from(schema.sessions)
       .where(and(eq(schema.sessions.projectId, project.id), eq(schema.sessions.anonId, anonId)));
@@ -159,6 +162,14 @@ export async function POST(req: NextRequest | Request) {
         matchedRuleIds.push(r.id);
       }
     }
+    const creationMatches = matchingCreationRules(rules, {
+      browser: ua.browser,
+      country,
+      device: deviceOf(req.headers.get('user-agent') || ''),
+      referrer,
+      source: categorizeSource(referrer, pageUrl),
+    });
+    matchedRuleIds.push(...creationMatches.map((r) => r.id));
   }
 
   const [existing] = await db.select({
@@ -215,6 +226,12 @@ export async function POST(req: NextRequest | Request) {
   const keptTimestamps = kept.map((e) => e.ts).filter((t): t is number => t != null);
   const batchMaxTs = keptTimestamps.length ? Math.max(...keptTimestamps) : startedAtMs;
   const cappedDuration = cappedDurationMs(startedAtMs, batchMaxTs, capMs);
+
+  // duration_gte rules only ever grow more true, never less — safe to
+  // re-check every batch against this batch's span and rely on
+  // tagSession's onConflictDoNothing for stickiness once it first fires.
+  const durationMatches = matchingDurationRules(rules, Math.floor(cappedDuration / 1000));
+  matchedRuleIds.push(...durationMatches.map((r) => r.id));
 
   const update: Record<string, unknown> = {
     lastActivityAt: now,
