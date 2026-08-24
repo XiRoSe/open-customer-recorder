@@ -396,7 +396,10 @@ function AssistantMessage({ content, payload, projectId, threadId, onAsk, onRetr
         {p?.link && (
           <a className={styles.go} href={p.link.href} target="_blank" rel="noreferrer">{p.link.label}</a>
         )}
-        {p && <CitationChips citations={p.citations} />}
+        {/* Citation chips only for sources the view-nav link doesn't
+            already open — a lone "Clusters" chip under "Open the cluster
+            map →" says nothing new. */}
+        {p && <CitationChips citations={p.citations.filter((c) => c.href !== p.link?.href)} />}
         {p?.interrupted && (
           <div className={styles.stopped}>
             Response interrupted
