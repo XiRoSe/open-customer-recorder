@@ -6,9 +6,9 @@
 import { sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { overviewForProject } from '@/lib/overview';
-import { timelineBundleForProject, TIMELINE_RANGES, deviceOf, pathOfUrl } from '@/lib/timeline';
+import { timelineBundleForProject, TIMELINE_RANGES, resolveRangeKey, deviceOf, pathOfUrl } from '@/lib/timeline';
 import { categorizeSource } from '@/lib/traffic-source';
-import { segmentsForProject, FACET_DIMENSIONS, type Dimension } from '@/lib/user-segments';
+import { segmentsForProject, clustersDataForProject, activeVisitorKeys, filterDimsByVisitors, FACET_DIMENSIONS, type Dimension } from '@/lib/user-segments';
 import type { Citation, ResearcherBlock, ResearchPlan, SessionItem } from './types';
 
 export const TOOL_TIMEOUT_MS = 20_000;
@@ -32,10 +32,20 @@ const fmtDur = (ms: number | null | undefined): string => {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 };
 
-const rangeOf = (args: Record<string, unknown>): string => {
-  const r = typeof args.range === 'string' ? args.range : '7d';
-  return TIMELINE_RANGES[r] ? r : '7d';
+/** Resolve the range arg into a concrete window — the fixed pills plus
+ * flexible "<n>d"/"<n>h" customs, so "last 2 days" stays 2 days. */
+const rangeOf = (args: Record<string, unknown>, fallback = '7d') => {
+  const r = typeof args.range === 'string' ? args.range.trim() : '';
+  return resolveRangeKey(r) ?? { key: fallback, ...TIMELINE_RANGES[fallback] };
 };
+
+/** Snap a window to the nearest fixed pill — for surfaces that only
+ * support the fixed set (the Overview's cached bundles). */
+const nearestFixed = (windowMs: number): string =>
+  windowMs === 0 ? 'all'
+  : windowMs <= 24 * 3600_000 ? '24h'
+  : windowMs <= 7 * 86_400_000 ? '7d'
+  : windowMs <= 30 * 86_400_000 ? '30d' : 'all';
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -63,10 +73,14 @@ const overviewSnapshot: ToolSpec = {
   name: 'overview_snapshot',
   label: 'Reading the overview',
   async run(projectId, args) {
-    const range = rangeOf(args);
+    // The overview's cached bundles exist for the fixed windows only —
+    // snap custom asks to the nearest one and say so in the facts.
+    const resolved = rangeOf(args);
+    const range = nearestFixed(resolved.windowMs);
     const o = await overviewForProject(projectId, range);
     const t = o.data.totals;
-    const rangeLabel = TIMELINE_RANGES[range].label;
+    const rangeLabel = TIMELINE_RANGES[range].label
+      + (range !== resolved.key ? ` (closest overview window to the ${resolved.label})` : '');
     const blocks: ResearcherBlock[] = [];
     const src = evidenceFrom(`Sessions by source · ${rangeLabel}`, t.bySource as Record<string, number>);
     if (src) blocks.push(src);
@@ -101,10 +115,11 @@ const getTimeline: ToolSpec = {
   name: 'get_timeline',
   label: 'Querying the timeline',
   async run(projectId, args) {
-    const range = rangeOf(args);
+    const resolved = rangeOf(args);
+    const range = resolved.key;
     const { data } = await timelineBundleForProject(projectId, range);
     const t = data.totals;
-    const rangeLabel = TIMELINE_RANGES[range].label;
+    const rangeLabel = resolved.label;
     const focus = str(args.focus); // sources|devices|browsers|countries|referrers|entries|friction|tags
     const blocks: ResearcherBlock[] = [];
     const add = (b: ResearcherBlock | null) => { if (b && blocks.length < 3) blocks.push(b); };
@@ -160,8 +175,9 @@ const querySessions: ToolSpec = {
   name: 'query_sessions',
   label: 'Filtering sessions',
   async run(projectId, args) {
-    const range = rangeOf(args);
-    const rangeLabel = TIMELINE_RANGES[range].label;
+    const resolved = rangeOf(args);
+    const range = resolved.key;
+    const rangeLabel = resolved.label;
     const limit = Math.min(Math.max(num(args.limit) ?? 8, 1), 10);
     const user = str(args.user);
     const tag = str(args.tag);
@@ -177,7 +193,7 @@ const querySessions: ToolSpec = {
 
     const conds = [sql`s.project_id = ${projectId}::uuid`, sql`s.event_count > 0`];
     if (range !== 'all') {
-      conds.push(sql`s.started_at > now() - make_interval(secs => ${TIMELINE_RANGES[range].windowMs / 1000})`);
+      conds.push(sql`s.started_at > now() - make_interval(secs => ${resolved.windowMs / 1000})`);
     }
     if (user) conds.push(sql`(s.user_id = ${user} OR s.anon_id = ${user} OR s.email ILIKE ${'%' + user + '%'})`);
     if (country) conds.push(sql`s.country ILIKE ${'%' + country + '%'}`);
@@ -296,12 +312,13 @@ const queryVisitors: ToolSpec = {
   name: 'query_visitors',
   label: 'Grouping visitors',
   async run(projectId, args) {
-    const range = rangeOf(args);
-    const rangeLabel = TIMELINE_RANGES[range].label;
+    const resolved = rangeOf(args);
+    const range = resolved.key;
+    const rangeLabel = resolved.label;
     const limit = Math.min(Math.max(num(args.limit) ?? 8, 1), 10);
     const sort = str(args.sort) ?? 'sessions'; // sessions | time | recent
     const timeCond = range !== 'all'
-      ? sql`AND s.started_at > now() - make_interval(secs => ${TIMELINE_RANGES[range].windowMs / 1000})`
+      ? sql`AND s.started_at > now() - make_interval(secs => ${resolved.windowMs / 1000})`
       : sql``;
     const orderSql = sort === 'time' ? sql`total_ms DESC NULLS LAST`
       : sort === 'recent' ? sql`last_seen DESC`
@@ -358,7 +375,22 @@ const getClusters: ToolSpec = {
     const dimension: Dimension = (FACET_DIMENSIONS as readonly string[]).includes(dimArg ?? '')
       ? dimArg as Dimension : 'overall';
     const segmentArg = str(args.segment);
-    const segments = await segmentsForProject(projectId, dimension);
+    // Clustering itself is global; a time window filters WHICH members
+    // were active — the same rule as the Clusters page, so the numbers
+    // here and the linked view always agree. Default: all time.
+    const resolved = str(args.range) ? rangeOf(args, 'all') : { key: 'all', ...TIMELINE_RANGES.all };
+    const range = resolved.key;
+    const rangeLabel = range === 'all' ? 'full history' : resolved.label;
+    let segments = await segmentsForProject(projectId, dimension);
+    const totalByName = new Map(segments.map((s) => [s.name, s.size]));
+    if (range !== 'all') {
+      const dims = filterDimsByVisitors(
+        await clustersDataForProject(projectId),
+        await activeVisitorKeys(projectId, new Date(Date.now() - resolved.windowMs)),
+      );
+      segments = (dims.find((d) => d.dimension === dimension)?.segments ?? [])
+        .slice().sort((a, b) => b.size - a.size);
+    }
     // A named segment steers the deep link: the cluster map opens with it
     // spotlighted. Loose match so "frantic integrators" finds the segment.
     const spotlit = segmentArg
@@ -369,29 +401,42 @@ const getClusters: ToolSpec = {
       .where(sql`${schema.dimensionAnalyses.projectId} = ${projectId} AND ${schema.dimensionAnalyses.dimension} = ${dimension}`)
       .limit(1);
     const evidence = evidenceFrom(
-      `Segments · ${dimension}`,
+      `Segments · ${dimension}${range !== 'all' ? ` · active in ${rangeLabel}` : ''}`,
       Object.fromEntries(segments.map((s) => [s.name, s.size])),
       8,
     );
     const params = new URLSearchParams();
     if (dimension !== 'overall') params.set('dimension', dimension);
     if (spotlit) params.set('segment', spotlit.name);
+    if (range !== 'all') params.set('range', range);
     return {
       facts: {
         dimension,
+        window: range === 'all'
+          ? 'full recorded history'
+          : `${rangeLabel} — counts are segment members ACTIVE in this window (clustering itself spans full history)`,
         ...(spotlit ? { focusedSegment: { name: spotlit.name, size: spotlit.size, description: spotlit.description, analysis: spotlit.analysis ? spotlit.analysis.slice(0, 400) : null } } : {}),
-        segments: segments.map((s) => ({ name: s.name, size: s.size, description: s.description, analysis: s.analysis ? s.analysis.slice(0, 300) : null })),
+        segments: segments.map((s) => ({
+          name: s.name,
+          ...(range === 'all'
+            ? { size: s.size }
+            : { activeInWindow: s.size, totalMembers: totalByName.get(s.name) ?? s.size }),
+          description: s.description,
+          analysis: s.analysis ? s.analysis.slice(0, 300) : null,
+        })),
         dimensionAnalysis: dimAnalysis?.analysis?.slice(0, 400) || null,
       },
       blocks: evidence ? [evidence] : [],
       citation: {
         label: 'Clusters',
-        detail: `Behavioral segments · ${dimension} dimension${spotlit ? ` · “${spotlit.name}” spotlighted` : ''}`,
+        detail: `Behavioral segments · ${dimension} dimension · ${rangeLabel}${spotlit ? ` · “${spotlit.name}” spotlighted` : ''}`,
         href: `/projects/${projectId}/clusters${params.size ? `?${params}` : ''}`,
       },
       caveat: segments.length === 0
-        ? 'No segments yet — clustering needs at least 4 finished visitor profiles.'
-        : null,
+        ? (range === 'all'
+          ? 'No segments yet — clustering needs at least 4 finished visitor profiles.'
+          : `No clustered visitors were active in the ${rangeLabel} — the segments themselves still exist over full history.`)
+        : range !== 'all' ? `Counts are members active in the ${rangeLabel}; clustering is computed over full history.` : null,
     };
   },
 };

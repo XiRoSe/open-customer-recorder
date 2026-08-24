@@ -18,6 +18,31 @@ export const TIMELINE_RANGES: Record<string, { windowMs: number; bucketMs: numbe
   'all': { windowMs: 0, bucketMs: 0, label: 'full recorded history' },
 };
 export const DEFAULT_RANGE = '7d';
+
+/**
+ * Resolve a range key into a concrete window: the fixed pills above PLUS
+ * flexible custom windows — "<n>d" (1-90 days) and "<n>h" (1-48 hours) —
+ * so a question like "the last 2 days" gets a real 2-day view instead of
+ * snapping to the nearest pill. Custom windows bucket hourly up to 2
+ * days, daily beyond. Returns null for anything unparseable.
+ */
+export function resolveRangeKey(key: string | null | undefined):
+  { key: string; windowMs: number; bucketMs: number; label: string } | null {
+  if (!key) return null;
+  if (TIMELINE_RANGES[key]) return { key, ...TIMELINE_RANGES[key] };
+  const d = key.match(/^(\d{1,2})d$/);
+  if (d) {
+    const n = Math.min(90, Math.max(1, parseInt(d[1], 10)));
+    return { key: `${n}d`, windowMs: n * 86_400_000, bucketMs: n <= 2 ? 3600_000 : 86_400_000, label: `last ${n} day${n === 1 ? '' : 's'}` };
+  }
+  const h = key.match(/^(\d{1,2})h$/);
+  if (h) {
+    const n = Math.min(48, Math.max(1, parseInt(h[1], 10)));
+    return { key: `${n}h`, windowMs: n * 3600_000, bucketMs: 3600_000, label: `last ${n} hour${n === 1 ? '' : 's'}` };
+  }
+  return null;
+}
+
 const ENGAGED_MS = 30_000;
 const SPIKE_Z = 2;
 const EMERGING_SHARE_PTS = 8;
@@ -353,7 +378,7 @@ export async function timelineBundleForProject(projectId: string, rangeKey: stri
     const rows = await timelineRowsForProject(projectId, windowEnd, windowMs + bucketMs);
     return { data: buildTimeline(rows, windowEnd, windowMs, bucketMs, false), rows, fromRollups: false };
   }
-  const range = TIMELINE_RANGES[rangeKey] ?? TIMELINE_RANGES[DEFAULT_RANGE];
+  const range = resolveRangeKey(rangeKey) ?? { key: DEFAULT_RANGE, ...TIMELINE_RANGES[DEFAULT_RANGE] };
   if (rangeKey === '30d') {
     // 30d prefers rollups too (with previous-window trend comparison) —
     // it's the heaviest hot range and daily buckets match the rollup

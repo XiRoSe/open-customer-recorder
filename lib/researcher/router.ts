@@ -65,11 +65,11 @@ Tools (pick at most 3 steps, usually 1):
 - get_timeline {range, focus?}: totals + trends vs previous window. focus one of sources|devices|browsers|countries|referrers|entries|friction.
 - query_sessions {range?, user?, tag?, device?, source?, country?, browser?, path?, minSeconds?, frustratedOnly?, newOnly?, sort?, limit?}: concrete sessions to watch. sort one of recent|longest|most_pages. device one of mobile|tablet|desktop. source one of search|referral|ads|social|internal|direct.
 - query_visitors {range?, sort?, limit?}: visitors grouped with totals + AI profiles. sort one of sessions|time|recent.
-- get_clusters {dimension?, segment?}: behavioral segments. dimension one of overall|persona|intent|source|experience. segment = a segment name from the question, to spotlight it on the cluster map.
+- get_clusters {dimension?, segment?, range?}: behavioral segments. dimension one of overall|persona|intent|source|experience. segment = a segment name from the question, to spotlight it on the cluster map. range filters to members ACTIVE in that window (omit for all-time).
 - session_digest {sessionId}: everything about one session (needs a UUID from history).
 - preview_tag_rule {kind, value}: how many sessions a draft tag rule would match.
 
-range is one of 24h|7d|30d|all. Default 7d; "today"→24h, "this month"→30d, "ever/all time"→all.
+range is one of 24h|7d|30d|all — OR a custom window when the question names an exact span: "<n>d" for days, "<n>h" for hours ("last 2 days"→"2d", "past 36 hours"→"36h"). Default 7d; "today"→24h, "this month"→30d, "ever/all time"→all. Always honor the exact span the user asked for.
 
 Rules:
 - Always produce at least one step, unless from_history is true (the conversation already contains the answer) or intent is smalltalk.
@@ -90,6 +90,10 @@ Q: "what kinds of visitors do we have?"
 {"intent":"clusters","from_history":false,"steps":[{"tool":"get_clusters","args":{"dimension":"overall"}}],"tag_draft":null}
 Q: "tell me about the Frantic Integrators segment"
 {"intent":"clusters","from_history":false,"steps":[{"tool":"get_clusters","args":{"segment":"Frantic Integrators"}}],"tag_draft":null}
+Q: "how many users were clustered in the last 2 days?"
+{"intent":"clusters","from_history":false,"steps":[{"tool":"get_clusters","args":{"range":"2d"}}],"tag_draft":null}
+Q: "what was the timeline for the last 2 days?"
+{"intent":"timeline","from_history":false,"steps":[{"tool":"get_timeline","args":{"range":"2d"}}],"tag_draft":null}
 Q: "tag everyone who visited pricing"
 {"intent":"tag","from_history":false,"steps":[{"tool":"preview_tag_rule","args":{"kind":"url_contains","value":"pricing"}}],"tag_draft":{"name":"Pricing visitors","kind":"url_contains","value":"pricing","color":"blue"}}
 Q: "and on mobile?" (after a sessions question)
@@ -140,11 +144,27 @@ const RANGE_HINTS: [RegExp, string][] = [
   [/\ball.?time|ever|overall|total history|since the (start|beginning)\b/i, 'all'],
 ];
 
+/** Exact spans first ("last 2 days" → "2d"), then the coarse hints. */
+export function rangeFromWords(question: string): string | null {
+  const days = question.match(/(?:last|past|previous)\s+(\d{1,2})\s*days?/i)?.[1];
+  if (days) {
+    const n = parseInt(days, 10);
+    return n === 1 ? '24h' : n === 7 ? '7d' : n === 30 ? '30d' : `${n}d`;
+  }
+  const hours = question.match(/(?:last|past|previous)\s+(\d{1,2})\s*hours?/i)?.[1];
+  if (hours) {
+    const n = parseInt(hours, 10);
+    return n === 24 ? '24h' : `${n}h`;
+  }
+  if (/couple of days/i.test(question)) return '2d';
+  return RANGE_HINTS.find(([re]) => re.test(question.toLowerCase()))?.[1] ?? null;
+}
+
 /** Keyword fallback — used when no LLM is configured or both calls fail.
  * Deliberately generous: some plan always comes out. */
 export function heuristicPlan(question: string): ResearchPlan {
   const q = question.toLowerCase();
-  const range = RANGE_HINTS.find(([re]) => re.test(q))?.[1] ?? '7d';
+  const range = rangeFromWords(question) ?? '7d';
   const args: Record<string, unknown> = { range };
 
   const tagMatch = q.match(/\btag\b/);
@@ -163,7 +183,13 @@ export function heuristicPlan(question: string): ResearchPlan {
   if (/\bsegment|cluster|persona|kinds? of (visitor|user)/i.test(q)) {
     const named = question.match(/["'“”]([^"'“”]{3,50})["'“”]/)?.[1]
       ?? question.match(/\b(?:about|the)\s+(?:the\s+)?([A-Z][\w-]+(?:\s+[A-Z][\w-]+){0,4})\s+segment/)?.[1];
-    return { intent: 'clusters', fromHistory: false, steps: [{ tool: 'get_clusters', args: named ? { segment: named } : {} }], tagDraft: null };
+    const cArgs: Record<string, unknown> = {};
+    if (named) cArgs.segment = named;
+    // Clusters default to all-time; a window applies only when asked for.
+    if (/\btoday|yesterday|last|past|this (week|month)|recent|\bdays?\b|hours?\b/i.test(q)) {
+      cArgs.range = rangeFromWords(question) ?? '7d';
+    }
+    return { intent: 'clusters', fromHistory: false, steps: [{ tool: 'get_clusters', args: cArgs }], tagDraft: null };
   }
   if (/\bwho\b|visitor|most (engaged|active)|returning users?\b/i.test(q)) {
     return { intent: 'visitors', fromHistory: false, steps: [{ tool: 'query_visitors', args: { range, sort: /time|engaged/.test(q) ? 'time' : 'sessions' } }], tagDraft: null };

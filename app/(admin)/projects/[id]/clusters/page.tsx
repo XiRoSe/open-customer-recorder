@@ -4,7 +4,7 @@ import { db, schema } from '@/lib/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { clustersDataForProject, activeVisitorKeys, filterDimsByVisitors, MIN_PROFILES_TO_CLUSTER } from '@/lib/user-segments';
-import { TIMELINE_RANGES } from '@/lib/timeline';
+import { TIMELINE_RANGES, resolveRangeKey } from '@/lib/timeline';
 import { ClusterMap } from '@/components/cluster-map';
 import { Card } from '@/components/ui/card';
 import { HeaderRule } from '@/components/header-rule';
@@ -21,14 +21,16 @@ export default async function ClustersPage(props: {
     .where(and(eq(schema.projects.id, id), eq(schema.projects.orgId, session.orgId)));
   if (!project) redirect('/projects');
 
-  // Same ranges as the Timeline. Clustering is global — the range only
-  // filters which visitors show: those with a session in the window.
-  const rangeKey = TIMELINE_RANGES[rangeParam ?? ''] ? rangeParam! : 'all';
+  // Same ranges as the Timeline, including flexible custom windows
+  // (?range=2d). Clustering is global — the range only filters which
+  // visitors show: those with a session in the window.
+  const resolved = resolveRangeKey(rangeParam) ?? { key: 'all', ...TIMELINE_RANGES.all };
+  const rangeKey = resolved.key;
   const allDims = await clustersDataForProject(id);
   const mappedTotal = allDims[0]?.points.length ?? 0;
   const dims = rangeKey === 'all'
     ? allDims
-    : filterDimsByVisitors(allDims, await activeVisitorKeys(id, new Date(Date.now() - TIMELINE_RANGES[rangeKey].windowMs)));
+    : filterDimsByVisitors(allDims, await activeVisitorKeys(id, new Date(Date.now() - resolved.windowMs)));
   const points = dims[0]?.points ?? [];
   const totalSegments = dims.reduce((s, d) => s + d.segments.length, 0);
   const [built] = await db.select({ at: sql<string>`max(${schema.userSegments.createdAt})` })
@@ -43,7 +45,7 @@ export default async function ClustersPage(props: {
           <p className="text-sm text-muted-foreground">
             {rangeKey === 'all'
               ? <>{points.length.toLocaleString()} {points.length === 1 ? 'visitor' : 'visitors'} mapped</>
-              : <><span className="font-medium text-foreground">{points.length.toLocaleString()} of {mappedTotal.toLocaleString()}</span> mapped visitors active in the {TIMELINE_RANGES[rangeKey].label}</>}
+              : <><span className="font-medium text-foreground">{points.length.toLocaleString()} of {mappedTotal.toLocaleString()}</span> mapped visitors active in the {resolved.label}</>}
             {totalSegments > 0 ? <> · <span className="font-medium text-foreground">{totalSegments} segments</span> across {dims.length} {dims.length === 1 ? 'dimension' : 'dimensions'}</> : null}
             {built?.at ? <> · last analyzed {new Date(built.at).toLocaleString('en-GB')}</> : null}
           </p>
@@ -77,6 +79,12 @@ function ClusterRangePills({ basePath, rangeKey }: { basePath: string; rangeKey:
   return (
     <div role="tablist" aria-label="Active in range" className="inline-flex rounded-lg border p-0.5 gap-0.5"
          title="Show only visitors with a recorded session in this range. Segments and positions stay as analyzed over the full history.">
+      {/* A custom window (?range=2d) appears as its own active pill. */}
+      {!TIMELINE_RANGES[rangeKey] && (
+        <span role="tab" aria-selected className="rounded-md px-3 py-1 text-sm font-medium bg-foreground text-background">
+          {rangeKey}
+        </span>
+      )}
       {Object.keys(TIMELINE_RANGES).map((key) => (
         <Link
           key={key}

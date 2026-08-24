@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validatePlan, heuristicPlan, PLAN_SCHEMA } from './router';
+import { validatePlan, heuristicPlan, rangeFromWords, PLAN_SCHEMA } from './router';
+import { resolveRangeKey } from '../timeline';
 import { titleFromQuestion } from './threads';
 import { templateAnswer, followupsFor } from './composer';
 import type { ResearchPlan } from './types';
@@ -88,6 +89,36 @@ describe('researcher router', () => {
       for (const q of ['what is the meaning of life?', 'revenue last quarter?', 'asdfgh']) {
         expect(heuristicPlan(q).steps.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('flexible time windows', () => {
+    it('rangeFromWords honors exact spans instead of snapping', () => {
+      expect(rangeFromWords('what was the timeline for the last 2 days?')).toBe('2d');
+      expect(rangeFromWords('show me the past 36 hours')).toBe('36h');
+      expect(rangeFromWords('the last 7 days please')).toBe('7d');
+      expect(rangeFromWords('the last 1 day')).toBe('24h');
+      expect(rangeFromWords('how are we doing today?')).toBe('24h');
+      expect(rangeFromWords('a couple of days back')).toBe('2d');
+    });
+
+    it('heuristic timeline plan carries the custom window', () => {
+      const plan = heuristicPlan('what was the users timeline for the last 2 days?');
+      expect(plan.steps[0].tool).toBe('get_timeline');
+      expect(plan.steps[0].args.range).toBe('2d');
+    });
+
+    it('heuristic clusters plan windows only when time is mentioned', () => {
+      expect(heuristicPlan('how many users were clustered for the last 2 days').steps[0].args.range).toBe('2d');
+      expect(heuristicPlan('what segments do we have?').steps[0].args.range).toBeUndefined();
+    });
+
+    it('resolveRangeKey parses fixed pills and customs, rejects garbage', () => {
+      expect(resolveRangeKey('7d')!.label).toBe('last 7 days');
+      expect(resolveRangeKey('2d')).toMatchObject({ key: '2d', windowMs: 2 * 86_400_000, bucketMs: 3_600_000 });
+      expect(resolveRangeKey('36h')!.windowMs).toBe(36 * 3_600_000);
+      expect(resolveRangeKey('999d')).toBeNull();
+      expect(resolveRangeKey('drop tables')).toBeNull();
     });
   });
 

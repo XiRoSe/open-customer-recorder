@@ -19,7 +19,17 @@ export const RANGES: { label: string; value: string; hours: number | null }[] = 
 export const DEFAULT_RANGE = '24h';
 
 export function resolveRange(value: string | undefined) {
-  return RANGES.find((r) => r.value === value) ?? RANGES.find((r) => r.value === DEFAULT_RANGE)!;
+  const fixed = RANGES.find((r) => r.value === value);
+  if (fixed) return fixed;
+  // Flexible custom windows ("2d", "36h") — deep links from the
+  // Researcher use these when a question names an exact window.
+  const m = value?.match(/^(\d{1,2})([dh])$/);
+  if (m) {
+    const n = Math.max(1, parseInt(m[1], 10));
+    const hours = m[2] === 'd' ? Math.min(90 * 24, n * 24) : Math.min(48, n);
+    return { label: value!, value: value!, hours };
+  }
+  return RANGES.find((r) => r.value === DEFAULT_RANGE)!;
 }
 
 export function rangeCutoff(value: string | undefined): Date | null {
@@ -46,6 +56,12 @@ export function RangeTabs({ basePath, currentRange, extraParams }: Props) {
 
   return (
     <div className="flex items-center gap-1 text-sm" role="tablist" aria-label="Time range">
+      {/* A custom window shows as its own active chip. */}
+      {!RANGES.some((r) => r.value === currentRange) && (
+        <span role="tab" aria-selected className="px-3 py-1 rounded-md bg-foreground text-background font-medium">
+          {currentRange}
+        </span>
+      )}
       {RANGES.map((r) => {
         const active = r.value === currentRange;
         return (

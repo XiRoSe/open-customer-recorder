@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { db, schema } from '@/lib/db';
 import { and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
-import { timelineForProject, timelineAnalysis, TIMELINE_RANGES, TIMELINE_METRICS, DEFAULT_RANGE, type TimelineMetric } from '@/lib/timeline';
+import { timelineForProject, timelineAnalysis, TIMELINE_RANGES, TIMELINE_METRICS, DEFAULT_RANGE, resolveRangeKey, type TimelineMetric } from '@/lib/timeline';
 import { SOURCE_CATEGORIES, SOURCE_META } from '@/lib/traffic-source';
 import { TimelineChart } from '@/components/timeline-chart';
 import { BreakdownRows } from '@/components/breakdown-rows';
@@ -33,7 +33,10 @@ export default async function TimelinePage(props: {
     .where(and(eq(schema.projects.id, id), eq(schema.projects.orgId, session.orgId)));
   if (!project) redirect('/projects');
 
-  const rangeKey = TIMELINE_RANGES[rangeParam ?? ''] ? rangeParam! : DEFAULT_RANGE;
+  // Fixed pills plus flexible custom windows (?range=2d) — deep links
+  // from the Researcher use these for "the last N days" questions.
+  const resolved = resolveRangeKey(rangeParam) ?? { key: DEFAULT_RANGE, ...TIMELINE_RANGES[DEFAULT_RANGE] };
+  const rangeKey = resolved.key;
   // ?measure= preselects the chart's measure — deep links from the Researcher.
   const initialMetric = measureParam && measureParam in TIMELINE_METRICS ? measureParam as TimelineMetric : undefined;
   const [data, { analysis, patterns }] = await Promise.all([
@@ -48,7 +51,7 @@ export default async function TimelinePage(props: {
         <div>
           <h1 className="text-2xl font-semibold">{project.name} Timeline</h1>
           <p className="text-sm text-muted-foreground">
-            {data.totals.sessions.toLocaleString()} {data.totals.sessions === 1 ? 'session' : 'sessions'} in the {TIMELINE_RANGES[rangeKey].label}
+            {data.totals.sessions.toLocaleString()} {data.totals.sessions === 1 ? 'session' : 'sessions'} in the {resolved.label}
             {data.totals.sessions > 0 ? <>
               {' '}· <span className="font-medium text-foreground cursor-help" title="Sessions lasting at least 30 seconds.">{data.totals.engaged} engaged</span>
               {' '}· <span className="font-medium text-foreground cursor-help" title="Sessions with at least one frustration signal: rage clicks, dead clicks, abandoned forms, refresh loops.">{data.totals.frustrated} with friction</span>
@@ -87,7 +90,7 @@ export default async function TimelinePage(props: {
                     : t.direction === 'down' ? 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
                     : 'text-muted-foreground'
                   }`}
-                  title={`${CHIP_EXPLAINERS[t.label] ?? t.label}${rangeKey !== 'all' ? ` Compared with the previous ${TIMELINE_RANGES[rangeKey].label.replace('last ', '')}.` : ''}`}
+                  title={`${CHIP_EXPLAINERS[t.label] ?? t.label}${rangeKey !== 'all' ? ` Compared with the previous ${resolved.label.replace('last ', '')}.` : ''}`}
                 >
                   <span aria-hidden>{DIRECTION_GLYPH[t.direction]}</span>
                   {t.label}: {t.value}
@@ -248,6 +251,12 @@ export default async function TimelinePage(props: {
 function RangePills({ basePath, rangeKey }: { basePath: string; rangeKey: string }) {
   return (
     <div role="tablist" aria-label="Time range" className="inline-flex rounded-lg border p-0.5 gap-0.5">
+      {/* A custom window (?range=2d) appears as its own active pill. */}
+      {!TIMELINE_RANGES[rangeKey] && (
+        <span role="tab" aria-selected className="rounded-md px-3 py-1 text-sm font-medium bg-foreground text-background">
+          {rangeKey}
+        </span>
+      )}
       {Object.keys(TIMELINE_RANGES).map((key) => (
         <Link
           key={key}
