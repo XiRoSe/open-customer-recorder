@@ -22,9 +22,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </form>
         )}
       </header>
-      <div className="flex-1">{children}</div>
-      {/* Renders only on project section pages (derives the project from the URL). */}
-      {session && <Researcher name={session.name} email={session.email} />}
+      {/* The Researcher drawer sits in-flow beside the page content and
+          squeezes it open/closed rather than covering it. */}
+      <div className="flex-1 flex items-stretch">
+        <div className="flex-1 min-w-0">{children}</div>
+        {/* Renders only on project section pages (derives the project from the URL). */}
+        {session && <Researcher name={session.name} email={session.email} />}
+      </div>
     </div>
   );
 }

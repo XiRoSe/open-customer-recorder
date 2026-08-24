@@ -220,7 +220,7 @@ export async function runResearch(opts: {
     blocks,
     citations: dedupedCitations,
     caveat: caveats[0] ?? null,
-    followups: interrupted ? [] : followupsFor(plan, finalState.outcomes ?? []),
+    followups: interrupted ? [] : followupsFor(plan, finalState.outcomes ?? [], question),
     footprints,
     ...(interrupted ? { interrupted: true } : {}),
   };

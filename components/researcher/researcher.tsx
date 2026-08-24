@@ -232,8 +232,8 @@ export function Researcher({ name, email }: { name: string; email: string }) {
           <span><small>Query your data</small></span>
         </div>
       )}
-      <div className={`${styles.scrim} ${open ? styles.scrimOpen : ''}`} onClick={() => setOpen(false)} />
       <aside className={`${styles.drawer} ${open ? styles.drawerOpen : ''}`} aria-label="Researcher">
+        <div className={styles.drawerInner}>
         <div className={styles.dHead}>
           <div className={styles.dRow}>
             <span className={styles.dTitle}>Researcher</span>
@@ -273,7 +273,6 @@ export function Researcher({ name, email }: { name: string; email: string }) {
               {showGreeting && (
                 <div className={styles.hello}>
                   <h2>{greetingWord()}, {name}.</h2>
-                  <div className={styles.helloP}>I read your sessions, visitors, timelines and clusters — and never change a thing.</div>
                   {observations && observations.length > 0 && (
                     <>
                       <div className={styles.noticed}>While you were away I noticed</div>
@@ -282,7 +281,7 @@ export function Researcher({ name, email }: { name: string; email: string }) {
                           <button key={i} type="button" className={styles.obsBtn} onClick={() => ask(o.question)}>
                             {o.text.includes('{strong}')
                               ? <>{o.text.split('{strong}')[0]}<b>{o.strong}</b>{o.text.split('{strong}')[1]}</>
-                              : <><b>{o.strong}</b> — {o.text}</>}
+                              : <><b>{o.strong}</b>{o.text}</>}
                           </button>
                         ))}
                       </div>
@@ -348,6 +347,7 @@ export function Researcher({ name, email }: { name: string; email: string }) {
             </div>
           </>
         )}
+        </div>
       </aside>
     </>
   );
