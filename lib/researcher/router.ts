@@ -76,14 +76,14 @@ TOOLS — what each one is for:
 RANGES: 24h|7d|30d|all — or an exact "<n>d"/"<n>h" when the user names a span ("last 2 days"→"2d", "past 36 hours"→"36h"). "today"→24h, "this month"→30d, "ever/all time"→all. Default 7d. ALWAYS honor the exact span the user asked for.
 
 PROCESS — every time, in order:
-1. analysis: write ONE short sentence first — what is really being asked, and what evidence would answer it. Think here before choosing anything.
+1. analysis: ONE short sentence naming which tool fetches the evidence and why. It is a routing note — NEVER a draft of the answer, and knowing roughly what the answer might be is NOT a reason to skip fetching it.
 2. Read the question TOGETHER WITH the conversation. Researcher lines may end with a bracketed [showed: ...] note — the segment names, session ids, figures and views that answer displayed. Resolve "it", "that", "them", "the first one" against these, copying names and ids EXACTLY.
 3. Pick the single most specific tool that fetches the evidence. Add a second or third step ONLY when one tool truly cannot cover the question. Broad or vague questions get overview_snapshot.
-4. A follow-up inherits the previous question's range and filters unless the new question changes them.
-5. Set from_history true (with no steps) ONLY when the conversation already contains everything needed — questions about what you already said or showed. Digging deeper into the data ALWAYS re-queries.
+4. A follow-up inherits the previous question's range and filters unless the new question changes them — and it still runs a tool.
 
 HARD RULES:
 - NEVER answer the question — plans only.
+- Every plan has at least one step. from_history true (no steps) is RARE: ONLY for questions about your own previous words — "what did you mean by...", "summarize what you said" — or pleasantries (intent smalltalk). When in ANY doubt, plan a step.
 - tag_draft is null for every intent except tag. A tag request → intent tag: fill tag_draft AND add a preview_tag_rule step. NEVER plan any other write.
 - Questions outside this data (revenue, marketing spend, code) still get the nearest in-domain step — NEVER an empty plan.`;
 
@@ -232,7 +232,15 @@ export async function routeQuestion(question: string, historyBrief: string, fetc
       });
       if (text === null) break; // no LLM configured
       const plan = validatePlan(JSON.parse(text));
-      if (plan) return { plan, via: 'llm' };
+      if (plan) {
+        // from_history with no conversation is model drift by definition
+        // (there is nothing to answer from) — floor it deterministically.
+        if (plan.fromHistory && !historyBrief) {
+          plan.fromHistory = false;
+          if (plan.steps.length === 0) plan.steps.push(floorStep());
+        }
+        return { plan, via: 'llm' };
+      }
     } catch {
       // fall through to retry / heuristic
     }
