@@ -8,7 +8,6 @@ export async function resetDb() {
   await db.delete(schema.sessions);
   await db.delete(schema.projects);
   await db.delete(schema.organizations);
-  await db.delete(schema.leads);
 }
 
 export async function createOrgWithProject() {
