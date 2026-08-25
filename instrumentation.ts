@@ -24,8 +24,7 @@ export async function register() {
   const { runSummarySweepOnce } = await import('./lib/session-summaries');
   const { drainSummaryQueue, processNextSummary, duePendingSummaries, resetStuckProcessing } = await import('./lib/summary-worker');
   const { sweepUserProfilesOnce, drainUserProfiles, processNextProfile, duePendingProfiles, resetStuckProfiles } = await import('./lib/user-profiles');
-  const { refreshTimelineAnalyses } = await import('./lib/timeline');
-  const { queuesEnabled, getQueue, enqueueSignals, redisConnection } = await import('./lib/queue');
+  const { queuesEnabled, enqueueSignals, redisConnection } = await import('./lib/queue');
 
   // Session narratives: sweep and processing are INDEPENDENT. Sweep
   // creates the work rows; with Redis the work flows through BullMQ
@@ -60,12 +59,6 @@ export async function register() {
       .on('error', (e) => console.warn('[queue] summaries worker error', e.message));
     new Worker('profiles', async () => { await processNextProfile(); }, { connection, concurrency: 1 })
       .on('error', (e) => console.warn('[queue] profiles worker error', e.message));
-    const { buildHourRollup } = await import('./lib/rollups');
-    new Worker('aggregation', async (job) => {
-      const { projectId, hourStart } = job.data as { projectId: string; hourStart: number };
-      await buildHourRollup(projectId, hourStart);
-    }, { connection, concurrency: 2 })
-      .on('error', (e) => console.warn('[queue] aggregation worker error', e.message));
 
     // Reconciler: due DB rows → deduped job signals. Also the recovery
     // path if Redis lost jobs — the DB always knows what's owed. When
@@ -91,31 +84,6 @@ export async function register() {
     // Fresh work should not wait for the next reconcile tick: enqueue
     // right after each sweep lands new rows.
     afterSweep = reconcile;
-
-    // Aggregation scheduler: rollup jobs for missing + recent hours.
-    const { db, schema } = await import('./lib/db');
-    const { hoursNeedingRollup } = await import('./lib/rollups');
-    const scheduleRollups = async () => {
-      try {
-        const projects = await db.select({ id: schema.projects.id }).from(schema.projects);
-        const q = getQueue('aggregation');
-        if (!q) return;
-        for (const p of projects) {
-          const hours = await hoursNeedingRollup(p.id);
-          if (hours.length === 0) continue;
-          await q.addBulk(hours.map((h) => ({
-            name: 'rollup',
-            data: { projectId: p.id, hourStart: h },
-            // removeOnComplete/Fail EXPLICITLY per job: a finished job's id
-            // lingering in the completed set silently blocks every future
-            // re-add of that hour — which once froze backfill for good.
-            opts: { jobId: `roll:${p.id}:${h}`, removeOnComplete: true, removeOnFail: true },
-          })));
-        }
-      } catch (e) { console.warn('[queue] rollup scheduling failed', e); }
-    };
-    setTimeout(scheduleRollups, 30 * 1000);
-    setInterval(scheduleRollups, 10 * 60 * 1000);
     console.log('[queue] BullMQ mode: workers + reconciler armed');
   } else {
     // Legacy in-process mode — no Redis configured.
@@ -134,18 +102,6 @@ export async function register() {
     drainCycle();
     setInterval(drainCycle, 60 * 1000);
   }
-  // Timeline analyst reads: cached per (project, range), stale after 6h —
-  // the cycle itself is a no-op when everything is fresh.
-  let timelineInFlight = false;
-  const timelineCycle = async () => {
-    if (timelineInFlight) return;
-    timelineInFlight = true;
-    try { await refreshTimelineAnalyses(); }
-    catch (e) { console.warn('[timeline] cycle failed', e); }
-    finally { timelineInFlight = false; }
-  };
-  setTimeout(timelineCycle, 4 * 60 * 1000);
-  setInterval(timelineCycle, 60 * 60 * 1000);
   setInterval(() => {
     resetStuckProcessing().catch((e) => console.warn('[summaries] reset failed', e));
     resetStuckProfiles().catch((e) => console.warn('[profiles] reset failed', e));

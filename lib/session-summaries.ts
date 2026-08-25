@@ -41,13 +41,6 @@ export async function runSummarySweepOnce(): Promise<number> {
     ))
     .limit(SUMMARY_BATCH);
 
-  // Hours whose rollups this sweep invalidates: a digest landing for a
-  // session that started >2h ago (late end, or a digest-version
-  // re-extraction) changes history the rollup refresher never revisits.
-  const staleHours = new Map<string, Set<number>>();
-  const HOUR_MS = 3600_000;
-  const lateCutoff = Date.now() - 2 * HOUR_MS;
-
   let written = 0;
   for (const c of candidates) {
     let values: typeof schema.sessionSummaries.$inferInsert;
@@ -92,20 +85,8 @@ export async function runSummarySweepOnce(): Promise<number> {
         },
       });
     written++;
-    if (c.startedAt.getTime() < lateCutoff) {
-      const hours = staleHours.get(c.projectId) ?? new Set<number>();
-      hours.add(Math.floor(c.startedAt.getTime() / HOUR_MS) * HOUR_MS);
-      staleHours.set(c.projectId, hours);
-    }
   }
 
-  if (staleHours.size > 0) {
-    const { invalidateRollups } = await import('./rollups');
-    for (const [projectId, hours] of staleHours) {
-      await invalidateRollups(projectId, [...hours]).catch((e) =>
-        console.warn('[summaries] rollup invalidation failed', projectId, e instanceof Error ? e.message : e));
-    }
-  }
   return written;
 }
 

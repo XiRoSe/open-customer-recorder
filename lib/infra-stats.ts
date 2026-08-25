@@ -1,6 +1,6 @@
 // Early-warning gauges for the Settings → Infra section: queue depths,
-// summary latency, database and blob size, rollup coverage. Cheap
-// aggregate reads — the point is to see strain long before users do.
+// summary latency, database and blob size. Cheap aggregate reads — the
+// point is to see strain long before users do.
 import { sql } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { queuesEnabled, queueDepths, getQueue, type QueueName } from './queue';
@@ -17,7 +17,6 @@ export interface InfraStats {
   /** Total size of the sessions relation incl. TOAST — where the replay
    * blobs actually live. O(1) catalog read, no table scan. */
   sessionsBytes: number;
-  rollups: { count: number; freshestHour: Date | null };
 }
 
 async function llmHealth(): Promise<'connected' | 'unreachable' | 'not set'> {
@@ -39,7 +38,6 @@ export async function infraStats(): Promise<InfraStats> {
   interface Row extends Record<string, unknown> {
     pending: number; processing: number; failed: number; done: number;
     median_ms: number | null; db_bytes: string; sessions_bytes: string;
-    rollup_count: number; rollup_freshest: string | null;
   }
   const res = await db.execute<Row>(sql`
     WITH s AS (
@@ -54,9 +52,7 @@ export async function infraStats(): Promise<InfraStats> {
        FROM ${schema.sessionSummaries}
        WHERE status = 'done' AND updated_at > now() - interval '24 hours') AS median_ms,
       pg_database_size(current_database()) AS db_bytes,
-      pg_total_relation_size('sessions') AS sessions_bytes,
-      (SELECT count(*)::int FROM ${schema.timelineRollups}) AS rollup_count,
-      (SELECT max(hour_start)::text FROM ${schema.timelineRollups}) AS rollup_freshest
+      pg_total_relation_size('sessions') AS sessions_bytes
   `);
   const rows: Row[] = Array.isArray(res) ? res : (res as unknown as { rows: Row[] }).rows ?? [];
   const r = rows[0];
@@ -77,6 +73,5 @@ export async function infraStats(): Promise<InfraStats> {
     medianLatencyMs: r.median_ms === null ? null : Number(r.median_ms),
     dbBytes: Number(r.db_bytes),
     sessionsBytes: Number(r.sessions_bytes),
-    rollups: { count: r.rollup_count, freshestHour: r.rollup_freshest ? new Date(r.rollup_freshest) : null },
   };
 }

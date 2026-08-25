@@ -66,8 +66,8 @@ export default async function SessionsPage(props: {
     eq(schema.sessions.projectId, id),
     gt(schema.sessions.eventCount, 0),
   ];
-  // Explicit time slice (from the Timeline's click-through) beats the
-  // relative range tabs.
+  // Explicit time slice (from= / to= deep links) beats the relative
+  // range tabs.
   const sliceFrom = fromParam && !isNaN(Date.parse(fromParam)) ? new Date(fromParam) : null;
   const sliceTo = toParam && !isNaN(Date.parse(toParam)) ? new Date(toParam) : null;
   if (sliceFrom && sliceTo) {

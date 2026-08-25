@@ -194,15 +194,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
               </div>
             )}
           </Card>
-          <Card className="p-4" title="Pre-aggregated hourly timeline rollups. The freshest hour should track the current hour once backfill completes.">
-            <div className="text-2xl font-semibold tabular-nums">{infra.rollups.count.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground">Timeline rollup hours</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {infra.rollups.freshestHour
-                ? `fresh to ${infra.rollups.freshestHour.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC`
-                : 'not built yet'}
-            </div>
-          </Card>
           <Card className="p-4" title="Live /health check of the private multimodel LLM service (LLM_SERVICE_URL).">
             <div className={`text-2xl font-semibold ${infra.llm === 'unreachable' ? 'text-rose-600' : ''}`}>{infra.llm}</div>
             <div className="text-sm text-muted-foreground">LLM service</div>
