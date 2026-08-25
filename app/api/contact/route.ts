@@ -46,7 +46,7 @@ export async function POST(req: Request) {
           to: [to],
           reply_to: email,
           subject: `New lead: ${name}`,
-          text: `Name: ${name}\nEmail: ${email}\n\n${message}\n\n— PocketScience reach-out form`,
+          text: `Name: ${name}\nEmail: ${email}\n\n${message}\n\n- PocketScience reach-out form`,
         }),
       });
       if (res.ok) {

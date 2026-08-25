@@ -6,7 +6,6 @@ import { ContactForm } from '@/components/home/contact-form';
 import styles from './home.module.css';
 
 const BRAND = 'PocketScience';
-const OSS_URL = 'https://github.com/XiRoSe/pocketscience-oss';
 
 const TAPE = [
   'Replay every visit',
@@ -15,7 +14,7 @@ const TAPE = [
   'Session narratives',
   'Visitor clusters',
   'Auto-tags',
-  'Open source',
+  'Self-hostable',
 ];
 
 export const metadata: Metadata = {
@@ -29,14 +28,14 @@ export default function Home() {
       <ScrollReveal />
 
       <header className={styles.hero}>
-        <div className={styles.heroInner}>
-          <div className={styles.topRow}>
-            <span className={styles.wordmark}>{BRAND}</span>
-            <Link href="/login" className={styles.loginBtn}>
-              Log in <span aria-hidden>&rarr;</span>
-            </Link>
-          </div>
+        <div className={styles.topBar}>
+          <span className={styles.wordmark}>{BRAND}</span>
+          <Link href="/login" className={styles.loginBtn}>
+            Log in <span aria-hidden>&rarr;</span>
+          </Link>
+        </div>
 
+        <div className={styles.heroInner}>
           <div className={styles.heroCenter}>
             <p className={styles.eyebrow}>Your whole user-research lab. Pocket-sized.</p>
             <h1 className={styles.headline}>
@@ -50,7 +49,7 @@ export default function Home() {
               <Link href="/login" className={styles.ctaPrimary}>
                 Open the lab <span aria-hidden>&rarr;</span>
               </Link>
-              <p className={`${styles.ctaNote} ${styles.mono}`}>Cloud or self-hosted · open source</p>
+              <p className={`${styles.ctaNote} ${styles.mono}`}>Cloud or self-hosted · invite-only</p>
             </div>
           </div>
         </div>
@@ -80,10 +79,10 @@ export default function Home() {
             </div>
             <div className={styles.choiceCard}>
               <span className={`${styles.choiceLabel} ${styles.mono}`}>Self-hosted</span>
-              <h3>You host it</h3>
-              <p>One Docker container on your own server. Sessions never leave your infrastructure.</p>
-              <a href={OSS_URL} className={styles.ctaGhost} target="_blank" rel="noopener noreferrer">
-                Get the code <span aria-hidden>↗</span>
+              <h3>We deploy it on yours</h3>
+              <p>One container on your own infrastructure, set up with us. Sessions never leave your hands.</p>
+              <a href="#contact" className={styles.ctaGhost}>
+                Talk to us <span aria-hidden>&rarr;</span>
               </a>
             </div>
           </div>
@@ -104,20 +103,25 @@ export default function Home() {
             Open the lab <span aria-hidden>&rarr;</span>
           </Link>
         </div>
+      </section>
+
+      <section id="contact" className={styles.contactBand} data-reveal>
+        <div className={styles.contactInner}>
+          <p className={styles.eyebrow}>Contact</p>
+          <h2 className={styles.h2}>Want in?</h2>
+          <p className={styles.contactSub}>
+            We&rsquo;re onboarding a few teams at a time. Leave a note - we reply within a day.
+          </p>
+          <ContactForm />
+        </div>
+      </section>
+
+      <div className={styles.footerBand}>
         <div className={styles.footer}>
           <span className={styles.mono}>{BRAND}</span>
           <Link href="/login">Log in</Link>
         </div>
-      </section>
-
-      <section className={styles.contactBand} data-reveal>
-        <div className={styles.contactInner}>
-          <p className={styles.eyebrow}>Reach out</p>
-          <h2 className={styles.h2}>Sign-ups are invite-only, for now.</h2>
-          <p className={styles.contactSub}>Tell us who you are — we&rsquo;ll get back fast.</p>
-          <ContactForm />
-        </div>
-      </section>
+      </div>
     </div>
   );
 }

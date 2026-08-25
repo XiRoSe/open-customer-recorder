@@ -3,10 +3,11 @@ import { useState } from 'react';
 import styles from '@/app/home.module.css';
 
 /**
- * The reach-out form — registration is invite-only, so this is the
- * homepage's real conversion action. On success the form dissolves into
- * a self-drawing brass check with a mono LOGGED timestamp: the same
- * quiet instrument language as the rest of the page.
+ * The reach-out form - registration is invite-only, so this is the
+ * homepage's real conversion action. Placeholder-driven, three fields,
+ * one button. On success the form gives way to a self-drawing brass
+ * check and a mono LOGGED timestamp: the same quiet instrument language
+ * as the rest of the page.
  */
 export function ContactForm() {
   const [name, setName] = useState('');
@@ -30,12 +31,12 @@ export function ContactForm() {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => null);
-        setError(j?.error ?? 'Something went wrong — try again.');
+        setError(j?.error ?? 'Something went wrong - try again.');
         return;
       }
       setSentAt(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
     } catch {
-      setError('Something went wrong — try again.');
+      setError('Something went wrong - try again.');
     } finally {
       setBusy(false);
     }
@@ -48,7 +49,7 @@ export function ContactForm() {
           <circle cx="24" cy="24" r="22" stroke="currentColor" strokeWidth="2" className={styles.contactCheckRing} />
           <path d="M15 24.5 L21.5 31 L33 18.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.contactCheckMark} />
         </svg>
-        <p className={styles.contactDoneText}>Received — you&rsquo;ll hear from us soon.</p>
+        <p className={styles.contactDoneText}>Got it. Talk soon.</p>
         <p className={`${styles.contactDoneStamp} ${styles.mono}`}>LOGGED {sentAt}</p>
       </div>
     );
@@ -57,47 +58,44 @@ export function ContactForm() {
   return (
     <form onSubmit={submit} className={styles.contactForm}>
       <div className={styles.contactRow}>
-        <label className={styles.contactField}>
-          <span className={`${styles.contactLabel} ${styles.mono}`}>Full name</span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            maxLength={120}
-            autoComplete="name"
-            className={styles.contactInput}
-          />
-        </label>
-        <label className={styles.contactField}>
-          <span className={`${styles.contactLabel} ${styles.mono}`}>Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            maxLength={200}
-            autoComplete="email"
-            className={styles.contactInput}
-          />
-        </label>
-      </div>
-      <label className={styles.contactField}>
-        <span className={`${styles.contactLabel} ${styles.mono}`}>What are you building?</span>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           required
-          maxLength={2000}
-          rows={4}
-          className={`${styles.contactInput} ${styles.contactTextarea}`}
+          maxLength={120}
+          autoComplete="name"
+          placeholder="Name"
+          aria-label="Name"
+          className={styles.contactInput}
         />
-      </label>
-      {/* Honeypot — hidden from people, tempting to bots. */}
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          maxLength={200}
+          autoComplete="email"
+          placeholder="Email"
+          aria-label="Email"
+          className={styles.contactInput}
+        />
+      </div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        required
+        maxLength={2000}
+        rows={3}
+        placeholder="What are you building?"
+        aria-label="What are you building?"
+        className={`${styles.contactInput} ${styles.contactTextarea}`}
+      />
+      {/* Honeypot - hidden from people, tempting to bots. */}
       <input type="text" name="company" tabIndex={-1} autoComplete="off" className={styles.contactTrap} aria-hidden />
       {error && <p className={styles.contactError}>{error}</p>}
       <button type="submit" disabled={busy} className={styles.ctaPrimary}>
-        {busy ? 'Sending…' : <>Reach out <span aria-hidden>&rarr;</span></>}
+        {busy ? 'Sending…' : <>Send <span aria-hidden>&rarr;</span></>}
       </button>
     </form>
   );

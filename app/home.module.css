@@ -79,24 +79,34 @@
 
 .hero {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  /* The hero is always exactly one screen: top bar, centered content,
+     tape pinned at the floor — at every viewport size. svh so mobile
+     browser chrome doesn't push the tape off-screen. */
+  min-height: 100svh;
   background: var(--ink);
   color: var(--paper);
   overflow: hidden;
 }
 
-.heroInner {
-  position: relative;
-  z-index: 1;
-  max-width: 84rem;
-  margin: 0 auto;
-  padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 0;
-}
-
-.topRow {
+.topBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  padding: 1.4rem clamp(1.25rem, 3vw, 2.25rem);
+}
+
+.heroInner {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  width: 100%;
+  max-width: 84rem;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 4vw, 3rem);
 }
 
 .wordmark {
@@ -128,11 +138,14 @@
 }
 
 .heroCenter {
+  flex: 1;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: clamp(4rem, 10vw, 7.5rem) 0 clamp(3.5rem, 7vw, 5.5rem);
+  padding: clamp(1.5rem, 3vh, 3rem) 0;
 }
 
 .headline {
@@ -140,8 +153,23 @@
   line-height: 1.02;
   font-weight: 700;
   letter-spacing: -0.03em;
-  margin: 1.1rem 0 clamp(2rem, 4.5vw, 3rem);
+  margin: 1.1rem 0 clamp(1.6rem, 3.5vh, 3rem);
   text-wrap: balance;
+}
+
+/* Very wide screens earn a bigger moment — the hero scales up instead
+   of floating small in empty space. */
+@media (min-width: 1600px) {
+  .headline {
+    font-size: 6.9rem;
+  }
+  .ask {
+    width: min(780px, 100%);
+  }
+  .askQ,
+  .askA {
+    font-size: 1.15rem;
+  }
 }
 
 .headlineLine {
@@ -174,7 +202,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.9rem;
-  margin-top: clamp(2rem, 4.5vw, 3rem);
+  margin-top: clamp(1.6rem, 3.5vh, 3rem);
 }
 
 .ctaPrimary {
@@ -201,6 +229,18 @@
 }
 .ctaPrimary:active {
   transform: translateY(1px);
+}
+
+/* Phones: primary actions become full-width, thumb-sized targets. */
+@media (max-width: 560px) {
+  .heroCtas .ctaPrimary,
+  .contactForm .ctaPrimary,
+  .choiceCard .ctaPrimary,
+  .choiceCard .ctaGhost {
+    width: 100%;
+    max-width: 22rem;
+    justify-content: center;
+  }
 }
 
 .ctaGhost {
@@ -464,6 +504,12 @@
   margin: 0;
   text-wrap: balance;
 }
+.footerBand {
+  background: var(--ink);
+  color: var(--paper);
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
 .footer {
   display: flex;
   align-items: center;
@@ -471,7 +517,7 @@
   gap: 1rem;
   max-width: 84rem;
   margin: 0 auto;
-  padding: 1.25rem clamp(1.25rem, 4vw, 3rem) 1.75rem;
+  padding: 1.25rem clamp(1.25rem, 4vw, 3rem);
   font-size: 0.75rem;
   color: var(--muted-on-ink);
 }
@@ -492,9 +538,9 @@
 }
 
 .contactInner {
-  max-width: 34rem;
+  max-width: 28rem;
   margin: 0 auto;
-  padding: clamp(3rem, 7vw, 5rem) clamp(1.25rem, 4vw, 3rem) clamp(3.5rem, 8vw, 5.5rem);
+  padding: clamp(3rem, 7vw, 5rem) clamp(1.25rem, 4vw, 3rem);
   text-align: center;
 }
 
@@ -523,19 +569,6 @@
   }
 }
 
-.contactField {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.contactLabel {
-  font-size: 0.59375rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted-on-ink);
-}
-
 .contactInput {
   width: 100%;
   background: rgb(255 255 255 / 0.04);
@@ -550,6 +583,9 @@
 }
 .contactInput:focus {
   border-color: var(--brass);
+}
+.contactInput::placeholder {
+  color: oklch(0.55 0.012 75);
 }
 
 .contactTextarea {

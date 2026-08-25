@@ -7,7 +7,7 @@ interface QA { q: string; a: string; steps: string; }
 const QAS: QA[] = [
   {
     q: 'Why do people quit checkout on mobile?',
-    a: 'The coupon field — the keyboard hides your Pay button.',
+    a: 'The coupon field - the keyboard hides your Pay button.',
     steps: 'CHECKED 214 SESSIONS · 11s',
   },
   {
@@ -17,7 +17,7 @@ const QAS: QA[] = [
   },
   {
     q: 'Who’s our most frustrated visitor?',
-    a: 'A Safari user — four rage clicks on a dead Save button.',
+    a: 'A Safari user - four rage clicks on a dead Save button.',
     steps: 'CHECKED 309 SESSIONS · 9s',
   },
 ];
