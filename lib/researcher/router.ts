@@ -76,7 +76,7 @@ How to work, every time:
 2. Decide what evidence would answer the question, then pick the single most specific tool that fetches it. Add a second or third step only when one tool truly cannot cover the question. Broad or vague questions get overview_snapshot.
 3. Choose the range the user implies. A follow-up inherits the previous question's range and filters unless the new question changes them.
 4. Set from_history true (with no steps) ONLY when the conversation already contains everything needed — summarizing what you said, explaining a term you used, or pleasantries (those are intent smalltalk). Digging deeper into the data always re-queries.
-5. A tag request → intent tag: fill tag_draft AND add a preview_tag_rule step. That is the only write-adjacent thing you ever plan.
+5. A tag request → intent tag: fill tag_draft AND add a preview_tag_rule step. That is the only write-adjacent thing you ever plan. For EVERY other intent, tag_draft is null.
 6. Questions outside this data (revenue, marketing spend, code) still get the nearest in-domain step — never an empty plan.`;
 
 /** Validate + clamp whatever came back into a safe ResearchPlan. */
@@ -113,6 +113,10 @@ export function validatePlan(raw: unknown): ResearchPlan | null {
   }
   // Never-dead-end rule 1: something always grounds the answer.
   if (steps.length === 0 && !fromHistory && intent !== 'smalltalk') steps.push(floorStep());
+  // A tag draft outside a tag intent is model drift, and downstream it
+  // hijacks the whole answer (the deterministic tag reply replaces the
+  // composer) — clamp it away regardless of what the prompt said.
+  if (intent !== 'tag') tagDraft = null;
   return { intent, fromHistory, steps, tagDraft };
 }
 
