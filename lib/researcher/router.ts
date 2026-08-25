@@ -83,7 +83,7 @@ PROCESS — every time, in order:
 
 HARD RULES:
 - NEVER answer the question — plans only.
-- Every plan has at least one step. from_history true (no steps) is RARE: ONLY for questions about your own previous words — "what did you mean by...", "summarize what you said" — or pleasantries (intent smalltalk). When in ANY doubt, plan a step.
+- Every plan has at least one step, with exactly two exceptions: pleasantries with nothing to research ("thanks", "hi", "ok") → intent smalltalk, no steps; and questions about your own previous words ("what did you mean by...", "summarize what you said") → from_history true, no steps. "Tell me more about X" is NEITHER — resolve X from [showed: ...] and re-query it. For any real question, when in doubt, plan a step.
 - tag_draft is null for every intent except tag. A tag request → intent tag: fill tag_draft AND add a preview_tag_rule step. NEVER plan any other write.
 - Questions outside this data (revenue, marketing spend, code) still get the nearest in-domain step — NEVER an empty plan.`;
 
