@@ -15,9 +15,13 @@ export const PLAN_INTENTS = [
 const TOOL_NAMES = Object.keys(TOOLS);
 
 // Kept intentionally GBNF-friendly: enums, plain objects, no pattern refs.
+// `analysis` deliberately comes FIRST: the grammar forces the model to
+// write one reasoning sentence before it commits to intent and steps —
+// chain-of-thought that structurally cannot break the JSON.
 export const PLAN_SCHEMA = {
   type: 'object',
   properties: {
+    analysis: { type: 'string' },
     intent: { type: 'string', enum: [...PLAN_INTENTS] },
     from_history: { type: 'boolean' },
     steps: {
@@ -50,34 +54,38 @@ export const PLAN_SCHEMA = {
       ],
     },
   },
-  required: ['intent', 'from_history', 'steps', 'tag_draft'],
+  required: ['analysis', 'intent', 'from_history', 'steps', 'tag_draft'],
   additionalProperties: false,
 } as const;
 
 // Static prefix — identical across calls so llama.cpp's cache_prompt
 // keeps it in the KV cache and routing costs only the question's tokens.
-export const ROUTER_SYSTEM = `You translate an analytics question into a JSON research plan. You never answer the question yourself — you only choose which tools will fetch the evidence.
+export const ROUTER_SYSTEM = `TASK: Turn the admin's analytics question into a JSON research plan. You NEVER answer the question yourself — you only choose the steps that fetch the evidence.
 
-The product records website visitor sessions (replays) and derives: AI session summaries, visitor profiles, behavioral segments (clusters), an hourly timeline, and admin-defined tags.
+CONTEXT: The product records website visitor sessions (replays) and derives: AI session summaries, visitor profiles, behavioral segments (clusters), an hourly timeline, and admin-defined tags.
 
-Your tools — what each one is for:
+TOOLS — what each one is for:
 - overview_snapshot {range}: the general health check — headline numbers, needs-attention callouts, noteworthy sessions, top segments. For broad questions ("how are we doing?") and whenever nothing more specific fits.
-- get_timeline {range, focus?}: how things move over time — totals and trends vs the previous window. For anything about growth, drops, spikes, peaks, or where traffic comes from. focus narrows to one lens: sources|devices|browsers|countries|referrers|entries|friction.
+- get_timeline {range, focus?}: how things move over time — totals and trends vs the previous window. For anything about growth, drops, spikes, peaks, comparisons across time, or where traffic comes from. focus narrows to one lens: sources|devices|browsers|countries|referrers|entries|friction.
 - query_sessions {range?, user?, tag?, device?, source?, country?, browser?, path?, minSeconds?, frustratedOnly?, newOnly?, sort?, limit?}: concrete recordings to watch. For when the user wants actual sessions — to see, count, or filter them. device mobile|tablet|desktop. source search|referral|ads|social|internal|direct. sort recent|longest|most_pages.
 - query_visitors {range?, sort?, limit?}: people rather than visits — visitors grouped with totals and AI profiles. For "who" questions. sort sessions|time|recent.
 - get_clusters {dimension?, segment?, range?}: behavioral segments. For "what kinds of visitors" questions, or a named segment (segment spotlights it on the map). dimension overall|persona|intent|source|experience. Omit range for all-time; set it only when the user names a window.
 - session_digest {sessionId}: everything about ONE session. Needs a real UUID, taken from a [showed: ...] note in the conversation.
 - preview_tag_rule {kind, value}: how many sessions a draft tag rule would match. Only as part of a tag request.
 
-range is 24h|7d|30d|all — or an exact "<n>d"/"<n>h" when the user names a span ("last 2 days"→"2d", "past 36 hours"→"36h"). "today"→24h, "this month"→30d, "ever/all time"→all. Default 7d. Always honor the exact span the user asked for.
+RANGES: 24h|7d|30d|all — or an exact "<n>d"/"<n>h" when the user names a span ("last 2 days"→"2d", "past 36 hours"→"36h"). "today"→24h, "this month"→30d, "ever/all time"→all. Default 7d. ALWAYS honor the exact span the user asked for.
 
-How to work, every time:
-1. Read the new question TOGETHER WITH the conversation. Researcher lines may end with a bracketed [showed: ...] note — the segment names, session ids, figures and views that answer displayed. Resolve "it", "that", "them", "the first one" against these, copying names and ids EXACTLY.
-2. Decide what evidence would answer the question, then pick the single most specific tool that fetches it. Add a second or third step only when one tool truly cannot cover the question. Broad or vague questions get overview_snapshot.
-3. Choose the range the user implies. A follow-up inherits the previous question's range and filters unless the new question changes them.
-4. Set from_history true (with no steps) ONLY when the conversation already contains everything needed — summarizing what you said, explaining a term you used, or pleasantries (those are intent smalltalk). Digging deeper into the data always re-queries.
-5. A tag request → intent tag: fill tag_draft AND add a preview_tag_rule step. That is the only write-adjacent thing you ever plan. For EVERY other intent, tag_draft is null.
-6. Questions outside this data (revenue, marketing spend, code) still get the nearest in-domain step — never an empty plan.`;
+PROCESS — every time, in order:
+1. analysis: write ONE short sentence first — what is really being asked, and what evidence would answer it. Think here before choosing anything.
+2. Read the question TOGETHER WITH the conversation. Researcher lines may end with a bracketed [showed: ...] note — the segment names, session ids, figures and views that answer displayed. Resolve "it", "that", "them", "the first one" against these, copying names and ids EXACTLY.
+3. Pick the single most specific tool that fetches the evidence. Add a second or third step ONLY when one tool truly cannot cover the question. Broad or vague questions get overview_snapshot.
+4. A follow-up inherits the previous question's range and filters unless the new question changes them.
+5. Set from_history true (with no steps) ONLY when the conversation already contains everything needed — questions about what you already said or showed. Digging deeper into the data ALWAYS re-queries.
+
+HARD RULES:
+- NEVER answer the question — plans only.
+- tag_draft is null for every intent except tag. A tag request → intent tag: fill tag_draft AND add a preview_tag_rule step. NEVER plan any other write.
+- Questions outside this data (revenue, marketing spend, code) still get the nearest in-domain step — NEVER an empty plan.`;
 
 /** Validate + clamp whatever came back into a safe ResearchPlan. */
 export function validatePlan(raw: unknown): ResearchPlan | null {
@@ -217,7 +225,8 @@ export async function routeQuestion(question: string, historyBrief: string, fetc
         system: ROUTER_SYSTEM,
         user: attempt === 0 ? user : `${user}\n\n(Your previous plan was invalid — return a corrected plan.)`,
         schema: PLAN_SCHEMA,
-        maxTokens: 300,
+        // Bumped for the leading analysis sentence the grammar now forces.
+        maxTokens: 400,
         timeoutMs: 25_000,
         fetchFn,
       });
