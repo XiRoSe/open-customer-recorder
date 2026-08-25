@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ScrollReveal } from '@/components/home/scroll-reveal';
 import { AskDemo } from '@/components/home/ask-demo';
+import { ContactForm } from '@/components/home/contact-form';
 import styles from './home.module.css';
 
 const BRAND = 'PocketScience';
@@ -106,6 +107,15 @@ export default function Home() {
         <div className={styles.footer}>
           <span className={styles.mono}>{BRAND}</span>
           <Link href="/login">Log in</Link>
+        </div>
+      </section>
+
+      <section className={styles.contactBand} data-reveal>
+        <div className={styles.contactInner}>
+          <p className={styles.eyebrow}>Reach out</p>
+          <h2 className={styles.h2}>Sign-ups are invite-only, for now.</h2>
+          <p className={styles.contactSub}>Tell us who you are — we&rsquo;ll get back fast.</p>
+          <ContactForm />
         </div>
       </section>
     </div>

@@ -481,3 +481,166 @@
 .footer a:hover {
   color: var(--brass);
 }
+
+/* ---------- reach out (below the footer — the real front door while
+   registration stays invite-only) ---------- */
+
+.contactBand {
+  background: var(--ink);
+  color: var(--paper);
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.contactInner {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: clamp(3rem, 7vw, 5rem) clamp(1.25rem, 4vw, 3rem) clamp(3.5rem, 8vw, 5.5rem);
+  text-align: center;
+}
+
+.contactSub {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--muted-on-ink);
+  margin: 0 0 2rem;
+}
+
+.contactForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.contactRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 560px) {
+  .contactRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.contactField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.contactLabel {
+  font-size: 0.59375rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted-on-ink);
+}
+
+.contactInput {
+  width: 100%;
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  color: var(--paper);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.contactInput:focus {
+  border-color: var(--brass);
+}
+
+.contactTextarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+/* Honeypot — parked off-screen, never display:none (some bots skip
+   hidden inputs), never focusable by people (tabIndex -1). */
+.contactTrap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.contactError {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #e08080;
+}
+
+.contactForm .ctaPrimary {
+  align-self: center;
+  margin-top: 0.4rem;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.contactForm .ctaPrimary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* the after-effect: form dissolves into a self-drawing brass check */
+
+.contactDone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 2.25rem 0 1.5rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .contactDone { animation: doneIn 0.5s ease; }
+}
+
+@keyframes doneIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.contactCheck {
+  width: 52px;
+  height: 52px;
+  color: var(--brass);
+}
+
+.contactCheckRing {
+  stroke-dasharray: 139;
+  stroke-dashoffset: 0;
+}
+.contactCheckMark {
+  stroke-dasharray: 27;
+  stroke-dashoffset: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .contactCheckRing {
+    stroke-dashoffset: 139;
+    animation: drawStroke 0.7s ease 0.1s forwards;
+  }
+  .contactCheckMark {
+    stroke-dashoffset: 27;
+    animation: drawStroke 0.4s ease 0.75s forwards;
+  }
+}
+
+@keyframes drawStroke {
+  to { stroke-dashoffset: 0; }
+}
+
+.contactDoneText {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 500;
+}
+
+.contactDoneStamp {
+  margin: 0;
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  color: var(--muted-on-ink);
+}

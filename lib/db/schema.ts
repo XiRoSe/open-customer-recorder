@@ -346,3 +346,17 @@ export const timelineAnalyses = pgTable('timeline_analyses', {
   projectRangeIdx: uniqueIndex('timeline_analyses_project_range_idx').on(t.projectId, t.rangeKey),
 }));
 
+
+// Leads from the public homepage reach-out form — registration is
+// invite-only, so this is the front door. Always stored here first;
+// the email notification (see app/api/contact/route.ts) is best-effort
+// on top, so a mail-provider hiccup can never lose a lead.
+export const leads = pgTable('leads', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  message: text('message').notNull(),
+  /** Whether the notification email actually went out. */
+  notified: boolean('notified').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
