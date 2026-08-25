@@ -172,6 +172,28 @@
   }
 }
 
+/* Short viewports (small laptops, browser chrome eating height): the
+   whole vertical rhythm compresses so the one-screen hero still fits —
+   type scales by viewport HEIGHT here, not width. */
+@media (max-height: 760px) and (min-width: 700px) {
+  .topBar {
+    padding: 1rem clamp(1.25rem, 3vw, 2.25rem);
+  }
+  .headline {
+    font-size: clamp(2.2rem, 9.5vh, 4.6rem);
+    margin: 0.8rem 0 1.5rem;
+  }
+  .heroCtas {
+    margin-top: 1.5rem;
+  }
+  .askAnswer {
+    min-height: 3.6em;
+  }
+  .tapeInner {
+    padding: 0.6rem 0;
+  }
+}
+
 .headlineLine {
   display: block;
   overflow: hidden;
