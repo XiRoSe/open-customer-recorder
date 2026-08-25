@@ -300,39 +300,6 @@ export const timelineRollups = pgTable('timeline_rollups', {
   projectHourIdx: uniqueIndex('timeline_rollups_project_hour_idx').on(t.projectId, t.hourStart),
 }));
 
-// Researcher conversations, one per (admin, project, conversation). The
-// title comes from the first question (trimmed to a few words) and
-// powers the History view; lastMessageAt orders it.
-export const researcherThreads = pgTable('researcher_threads', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => adminUsers.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  // Set when the owner shares a read-only link (workspace's Share
-  // button); null = not shared. The token itself is the capability —
-  // the public share page needs no auth, just a matching row.
-  shareToken: text('share_token').unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  userProjectIdx: index('researcher_threads_user_project_idx').on(t.userId, t.projectId, t.lastMessageAt),
-  shareTokenIdx: index('researcher_threads_share_token_idx').on(t.shareToken),
-}));
-
-// One row per turn half. Assistant rows carry the full render payload
-// (blocks, footprints, citations, caveat, follow-ups) as jsonb so History
-// recall replays instantly without re-running anything.
-export const researcherMessages = pgTable('researcher_messages', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  threadId: uuid('thread_id').notNull().references(() => researcherThreads.id, { onDelete: 'cascade' }),
-  role: text('role').notNull(), // 'user' | 'assistant'
-  content: text('content').notNull(),
-  payload: jsonb('payload'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  threadIdx: index('researcher_messages_thread_idx').on(t.threadId, t.createdAt),
-}));
-
 // Cached analyst read of the timeline window per range (24h / 7d / 30d),
 // refreshed by a background cycle — never generated at page-view time.
 export const timelineAnalyses = pgTable('timeline_analyses', {

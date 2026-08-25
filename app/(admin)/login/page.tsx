@@ -21,7 +21,7 @@ export default function LoginPage() {
     setBusy(false);
     // Hard navigation: the (admin) layout reads the session server-side,
     // and a client-side push would keep rendering its logged-out shell
-    // (no Log out button, no Researcher) until a manual reload.
+    // (no Log out button) until a manual reload.
     if (res.ok) window.location.assign('/projects');
     else setErr((await res.json()).error || 'login failed');
   }

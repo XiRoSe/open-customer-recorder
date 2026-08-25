@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { readSessionCookie } from '@/lib/auth';
 import Link from 'next/link';
 import { ProjectNav } from '@/components/project-nav';
-import { Researcher } from '@/components/researcher/researcher';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await readSessionCookie();
@@ -29,12 +28,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           )}
         </div>
       </header>
-      {/* The Researcher drawer sits in-flow beside the page content and
-          squeezes it open/closed rather than covering it. */}
       <div className="flex-1 flex items-stretch">
         <div className="flex-1 min-w-0">{children}</div>
-        {/* Renders only on project section pages (derives the project from the URL). */}
-        {session && <Researcher name={session.name} email={session.email} />}
       </div>
     </div>
   );
