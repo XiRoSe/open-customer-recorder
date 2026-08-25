@@ -30,9 +30,9 @@ export default function Home() {
       <header className={styles.hero}>
         <div className={styles.topBar}>
           <span className={styles.wordmark}>{BRAND}</span>
-          <a href="#contact" className={styles.loginBtn}>
-            Contact us <span aria-hidden>&rarr;</span>
-          </a>
+          <Link href="/login" className={styles.loginBtn}>
+            Sign in <span aria-hidden>&rarr;</span>
+          </Link>
         </div>
 
         <div className={styles.heroInner}>
@@ -124,7 +124,7 @@ export default function Home() {
       <div className={styles.footerBand}>
         <div className={styles.footer}>
           <span className={styles.mono}>{BRAND}</span>
-          <Link href="/login">Log in</Link>
+          <Link href="/login">Sign in</Link>
         </div>
       </div>
     </div>
