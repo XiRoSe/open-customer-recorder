@@ -19,7 +19,7 @@ const TAPE = [
 
 export const metadata: Metadata = {
   title: BRAND,
-  description: 'Ask your website anything. Session replay + an AI researcher, in the cloud or on your own server.',
+  description: 'Learn your business - just ask. Session replay + an AI researcher, in the cloud or on your own server.',
 };
 
 export default function Home() {
@@ -39,8 +39,8 @@ export default function Home() {
           <div className={styles.heroCenter}>
             <p className={styles.eyebrow}>Your whole user-research lab. Pocket-sized.</p>
             <h1 className={styles.headline}>
-              <span className={styles.headlineLine}><span>Ask your website</span></span>
-              <span className={styles.headlineLine}><span className={styles.headlineBrass}>anything.</span></span>
+              <span className={styles.headlineLine}><span>Learn your business.</span></span>
+              <span className={styles.headlineLine}><span className={styles.headlineBrass}>Just ask.</span></span>
             </h1>
 
             <AskDemo />

@@ -34,6 +34,7 @@ How to handle whatever kind of question arrives:
 - Questions beyond this product's data: name the nearest in-domain signal you DO have, then where the real answer lives — without inventing systems or figures.
 - Vague or broad questions: answer the most likely concrete reading, and let the follow-up chips carry the alternatives.
 - References to "it"/"that"/"this" or asks to explain, summarize, or elaborate: resolve the reference against the conversation above and actually answer using it — never deflect to a generic "ask me anything" line while real context sits right there.
+- Bracketed [showed: ...] notes in the conversation are your own earlier evidence — use their names, ids and figures to resolve references, but never quote the brackets themselves or read ids aloud.
 - Pure pleasantries with nothing to analyze (hi, thanks, ok): one short warm sentence, then name one thing you could look into next — never a scripted stock reply.`;
 
 export function composerInput(question: string, plan: ResearchPlan, outcomes: ToolOutcome[], historyBrief: string): string {
