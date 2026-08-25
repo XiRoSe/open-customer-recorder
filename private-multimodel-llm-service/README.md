@@ -5,7 +5,7 @@ Turns session digests into 2-3 sentence intent summaries.
 
 ## Railway setup
 1. New service in the same Railway project → deploy from this repo,
-   **root directory `summarizer/`**.
+   **root directory `private-multimodel-llm-service/`**.
 2. No public domain. Note the private host, e.g. `summarizer.railway.internal`.
 3. Enable **App Sleeping** on the service — the main app's worker wakes it
    in one burst per cycle; you pay only for active minutes.
@@ -20,7 +20,7 @@ badges keep working without it.
 ## Local smoke test
 
 ```bash
-docker build -t summarizer summarizer/ && docker run -p 8080:8080 summarizer
+docker build -t llm-service private-multimodel-llm-service/ && docker run -p 8080:8080 llm-service
 curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"messages":[{"role":"user","content":"Say hi"}],"max_tokens":10}'
 ```

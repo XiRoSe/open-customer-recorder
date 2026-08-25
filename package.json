@@ -2,7 +2,7 @@
   "name": "pocketscience-oss",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.",
+  "description": "Self-hosted session replay - a lightweight, source-available alternative to FullStory / OpenReplay.",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Matan Avitan",
   "homepage": "https://github.com/XiRoSe/pocketscience-oss#readme",

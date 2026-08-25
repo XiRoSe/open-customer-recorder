@@ -168,7 +168,7 @@ export const sessionSummaries = pgTable('session_summaries', {
 }));
 
 // Admin feature toggles, one row per org (single-org product today).
-// Missing row = all defaults (everything enabled). SUMMARIZER_URL unset
+// Missing row = all defaults (everything enabled). LLM_SERVICE_URL unset
 // still hard-disables the LLM layer regardless of these flags.
 export const appSettings = pgTable('app_settings', {
   id: uuid('id').defaultRandom().primaryKey(),

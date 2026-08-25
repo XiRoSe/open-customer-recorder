@@ -1,6 +1,6 @@
 # PocketScience
 
-**Self-hosted session replay — a lightweight, open-source alternative to FullStory / OpenReplay.**
+**Self-hosted session replay - a lightweight, source-available alternative to FullStory / OpenReplay. Free for personal and noncommercial use.**
 
 Captures real user sessions with [rrweb](https://github.com/rrweb-io/rrweb), stores them in your own Postgres, and replays them from a built-in admin dashboard. One Next.js app — ingest API and dashboard ship together, so it's cheap to run and you own the data end to end.
 
@@ -80,7 +80,8 @@ name — so nothing embedded before the PocketScience rename breaks.
 
 - 🎥 **Full session replay** via rrweb, with a live URL bar that follows the visitor across page loads and SPA route changes.
 - 📖 **Session narratives** — every session is auto-translated into a readable step-by-step story ("Landed on /home → clicked 'Pricing' → typed in the email field") with frustration badges: 🔥 rage clicks, 💀 dead clicks, 📝 abandoned forms, 🔁 pogo-sticking. Pure deterministic extraction — no AI required, works retroactively on existing sessions.
-- 🧠 **Optional AI intent summaries** — point `SUMMARIZER_URL` at the bundled self-hosted [summarizer service](summarizer/README.md) (llama.cpp + Qwen3.5-4B) and each session also gets a 2–3 sentence read on what the visitor wanted and where they got stuck. Session data never leaves your infrastructure.
+- 🧠 **Optional AI intent summaries** — point `LLM_SERVICE_URL` at the bundled self-hosted [LLM service](private-multimodel-llm-service/README.md) (llama.cpp + Qwen3.5-4B) and each session also gets a 2–3 sentence read on what the visitor wanted and where they got stuck. Session data never leaves your infrastructure.
+- 👥 **AI visitor profiles** — visitors with 2+ summarized sessions get a rolling profile ("who is this and what do they keep trying to do") on the Users page, built by the same self-hosted LLM.
 - 🗄️ **Bring your own Postgres** — events are gzipped and stored inline, no extra object store or volume.
 - 🔒 **Privacy modes** — mask all inputs, or strict masking of any element you tag.
 - 🏷️ **Admin-editable tag rules** — auto-tag sessions by URL match (e.g. "reached /signup") or visit count (e.g. "2nd+ session, same visitor"), each with its own color. Applies to existing sessions immediately.
@@ -120,8 +121,9 @@ The tracker uses a small **wire protocol** (kept stable for drop-in script tags)
 | `BLOB_DIR` | – | Directory for blob storage when not using inline DB storage. |
 | `APP_ORIGIN` | – | Public origin of the app (cookies etc). |
 | `LEGACY_TRACKER_COMPAT` | – | Whether the ingest endpoint still honors the pre-rebrand `x-mega-end` header alongside `x-ps-end` (default `true`). Set to `false` once nothing sends the old header anymore. |
-| `SUMMARIZER_URL` | – | URL of the [summarizer service](summarizer/README.md) (OpenAI-compatible). Unset = AI intent summaries off; deterministic narratives still work. |
+| `LLM_SERVICE_URL` | – | URL of the [LLM service](private-multimodel-llm-service/README.md) (OpenAI-compatible). Unset = AI intent summaries and visitor profiles off; deterministic narratives still work. `SUMMARIZER_URL` is honored as a legacy alias. |
 | `SUMMARIZER_MODEL_LABEL` | – | Label stored with each AI summary (e.g. `qwen3.5-4b-q4km`), useful once you fine-tune. |
+| `REDIS_URL` | – | Optional. With it, narrative/profile processing runs through BullMQ workers; without it an in-process drain loop does the same work. |
 
 \* Provide **either** `ADMIN_EMAIL`+`ADMIN_PASSWORD` **or** `ADMINS_CREDS`. Generate strong secrets with `openssl rand -base64 32`.
 
@@ -161,6 +163,19 @@ npm run test:e2e  # Playwright
 ## Contributing
 
 Contributions welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: [SECURITY.md](SECURITY.md), not a public issue.
+
+## PocketScience Cloud
+
+This repo is the free, self-hosted core. The hosted product at
+[pocketscience.ai](https://www.pocketscience.ai) adds the paid layer:
+
+- **AI researcher** - ask questions about your sessions in plain language
+- **Visitor clustering** - behavioral segments discovered automatically
+- **Timeline analytics** - hourly rollups, trends, and metric charts with AI reads
+- **Overview dashboard** and **team management** (multi-admin, roles, self-serve signup)
+- Managed hosting, or we deploy the whole thing on your infrastructure
+
+Want it? [Contact us](https://www.pocketscience.ai/#contact).
 
 ## License
 
