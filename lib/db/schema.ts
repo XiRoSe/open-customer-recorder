@@ -177,7 +177,6 @@ export const appSettings = pgTable('app_settings', {
   intentEnabled: boolean('intent_enabled').notNull().default(true),
   visualEnabled: boolean('visual_enabled').notNull().default(true),
   profilesEnabled: boolean('profiles_enabled').notNull().default(true),
-  clusteringEnabled: boolean('clustering_enabled').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -196,11 +195,6 @@ export const userProfiles = pgTable('user_profiles', {
   // call: { persona, intent, source, experience } — each a one-sentence
   // string. Null for profiles generated before facets existed.
   facets: jsonb('facets'),
-  segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
-  // 2D PCA projection of the profile embedding, set at clustering time —
-  // drives the cluster map without re-embedding on page load.
-  mapX: doublePrecision('map_x'),
-  mapY: doublePrecision('map_y'),
   sessionsSummarized: integer('sessions_summarized').notNull().default(0),
   status: text('status').notNull().default('pending'), // pending | processing | done | failed
   attempts: integer('attempts').notNull().default(0),
@@ -210,58 +204,6 @@ export const userProfiles = pgTable('user_profiles', {
 }, (t) => ({
   projectVisitorIdx: uniqueIndex('user_profiles_project_visitor_idx').on(t.projectId, t.visitorKey),
   statusIdx: index('user_profiles_status_idx').on(t.status, t.nextRetryAt),
-  // Every clustering run deletes segments wholesale; SET NULL needs this
-  // to avoid a seq scan per deleted segment.
-  segmentIdx: index('user_profiles_segment_idx').on(t.segmentId),
-}));
-
-// Behavioral segments discovered by clustering visitor-profile embeddings
-// (k-means over MiniLM vectors, k picked by silhouette; named by the
-// summarizer LLM). Rebuilt whenever profiles change — each run replaces
-// the project's segments wholesale, so rows are cheap and disposable.
-export const userSegments = pgTable('user_segments', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  // Which research dimension this segment belongs to:
-  // 'overall' | 'persona' | 'intent' | 'source' | 'experience'.
-  dimension: text('dimension').notNull().default('overall'),
-  name: text('name').notNull(),
-  description: text('description').notNull().default(''),
-  // Analyst paragraph beyond the one-line description: what unites the
-  // group, why it matters, what to do about it.
-  analysis: text('analysis').notNull().default(''),
-  size: integer('size').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  projectIdx: index('user_segments_project_idx').on(t.projectId, t.dimension),
-}));
-
-// Per-dimension position + segment assignment for each profile — one row
-// per (profile, dimension). The 'overall' dimension stays on
-// user_profiles.segmentId/mapX/mapY.
-export const profileDimensionPoints = pgTable('profile_dimension_points', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  profileId: uuid('profile_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
-  dimension: text('dimension').notNull(),
-  segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
-  x: doublePrecision('x').notNull(),
-  y: doublePrecision('y').notNull(),
-}, (t) => ({
-  profileDimIdx: uniqueIndex('profile_dimension_points_profile_dim_idx').on(t.profileId, t.dimension),
-  // Same SET NULL cascade as user_profiles.segment_id.
-  segmentIdx: index('profile_dimension_points_segment_idx').on(t.segmentId),
-}));
-
-// Batch-level analyst read per dimension ("what Source reveals about
-// this cohort"), refreshed on every clustering run.
-export const dimensionAnalyses = pgTable('dimension_analyses', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  dimension: text('dimension').notNull(),
-  analysis: text('analysis').notNull().default(''),
-  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  projectDimIdx: uniqueIndex('dimension_analyses_project_dim_idx').on(t.projectId, t.dimension),
 }));
 
 // Pre-aggregated hourly session metrics per project, built by queued,

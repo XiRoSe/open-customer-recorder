@@ -25,11 +25,6 @@ const FEATURES: { key: keyof AppSettings; title: string; description: string }[]
     title: 'Visitor profiles',
     description: 'Summarize a visitor’s session summaries into one profile on the Users page: what they want across visits, recurring friction, engagement trend. Rebuilds automatically after each new session.',
   },
-  {
-    key: 'clusteringEnabled',
-    title: 'Visitor segments',
-    description: 'Cluster visitor profiles into named behavioral segments (comparison shoppers, frustrated power users, …) shown on the Users page. Runs in-app; reclusters automatically as profiles change.',
-  },
 ];
 
 export function SettingsToggles({ initial, only }: { initial: AppSettings; only?: (keyof AppSettings)[] }) {

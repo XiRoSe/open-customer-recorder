@@ -6,7 +6,7 @@
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 
-export const QUEUE_NAMES = ['summaries', 'profiles', 'clustering', 'aggregation'] as const;
+export const QUEUE_NAMES = ['summaries', 'profiles', 'aggregation'] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 export function queuesEnabled(): boolean {

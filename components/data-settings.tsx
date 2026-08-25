@@ -45,7 +45,7 @@ export function DataSettings({ projectId, initialRetentionDays, initialMaxSessio
     <Card className="p-4">
       <div className="flex flex-wrap items-end gap-6">
         <label className="block">
-          <span className="block text-sm font-medium mb-1" title="Sessions (and their replays) older than this are deleted. Timeline history, visitor profiles, and segments are kept — insights outlive the raw data.">
+          <span className="block text-sm font-medium mb-1" title="Sessions (and their replays) older than this are deleted. Visitor profiles are kept — insights outlive the raw data.">
             Retention (days)
           </span>
           <input

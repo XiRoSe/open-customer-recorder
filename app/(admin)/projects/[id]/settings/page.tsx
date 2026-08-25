@@ -113,7 +113,7 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
       <section id="recording" className="scroll-mt-6">
         <h2 className="font-semibold mb-2">Recording &amp; data</h2>
         <p className="text-sm text-muted-foreground mb-2">
-          Replays age out with retention; timeline history, profiles, and segments are kept.
+          Replays age out with retention; profiles are kept.
         </p>
         <DataSettings
           projectId={project.id}
@@ -206,18 +206,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           <Card className="p-4" title="Live /health check of the private multimodel LLM service (LLM_SERVICE_URL).">
             <div className={`text-2xl font-semibold ${infra.llm === 'unreachable' ? 'text-rose-600' : ''}`}>{infra.llm}</div>
             <div className="text-sm text-muted-foreground">LLM service</div>
-          </Card>
-          <Card className="p-4" title="Live workers holding the clustering queue — the standalone cluster service. 0 means it is down or disconnected from Redis.">
-            <div className={`text-2xl font-semibold ${infra.clusterWorkers === 0 ? 'text-rose-600' : ''}`}>
-              {infra.clusterWorkers === null ? '—' : infra.clusterWorkers > 0 ? 'connected' : 'no worker'}
-            </div>
-            <div className="text-sm text-muted-foreground">Cluster service</div>
-            {infra.clusterWorkers !== null && infra.clusterWorkers > 0 && (
-              <div className="text-xs text-muted-foreground mt-1 tabular-nums">{infra.clusterWorkers} worker{infra.clusterWorkers === 1 ? '' : 's'} on the clustering queue</div>
-            )}
-            {infra.clusterWorkers === null && (
-              <div className="text-xs text-muted-foreground mt-1">runs in-process without Redis</div>
-            )}
           </Card>
         </div>
       </section>

@@ -24,7 +24,6 @@ export async function register() {
   const { runSummarySweepOnce } = await import('./lib/session-summaries');
   const { drainSummaryQueue, processNextSummary, duePendingSummaries, resetStuckProcessing } = await import('./lib/summary-worker');
   const { sweepUserProfilesOnce, drainUserProfiles, processNextProfile, duePendingProfiles, resetStuckProfiles } = await import('./lib/user-profiles');
-  const { runClusteringOnce } = await import('./lib/user-segments');
   const { refreshTimelineAnalyses } = await import('./lib/timeline');
   const { queuesEnabled, getQueue, enqueueSignals, redisConnection } = await import('./lib/queue');
 
@@ -117,8 +116,6 @@ export async function register() {
     };
     setTimeout(scheduleRollups, 30 * 1000);
     setInterval(scheduleRollups, 10 * 60 * 1000);
-    // Clustering runs in the standalone cluster service (it schedules
-    // its own repeatable job on the 'clustering' queue).
     console.log('[queue] BullMQ mode: workers + reconciler armed');
   } else {
     // Legacy in-process mode — no Redis configured.
@@ -136,17 +133,6 @@ export async function register() {
     };
     drainCycle();
     setInterval(drainCycle, 60 * 1000);
-    // Segments: recluster when profiles changed. Cheap when nothing did.
-    let clusterInFlight = false;
-    const clusterCycle = async () => {
-      if (clusterInFlight) return;
-      clusterInFlight = true;
-      try { await runClusteringOnce(); }
-      catch (e) { console.warn('[segments] cycle failed', e); }
-      finally { clusterInFlight = false; }
-    };
-    setTimeout(clusterCycle, 2 * 60 * 1000); // let the first drains land
-    setInterval(clusterCycle, 10 * 60 * 1000);
   }
   // Timeline analyst reads: cached per (project, range), stale after 6h —
   // the cycle itself is a no-op when everything is fresh.
