@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db, schema } from '@/lib/db';
-import { sql, count, avg, sum, gt, and, eq, asc } from 'drizzle-orm';
+import { sql, count, avg, sum, gt, and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { getAppSettings } from '@/lib/app-settings';
 import { infraStats } from '@/lib/infra-stats';
 import { SettingsToggles } from '@/components/settings-toggles';
 import { DataSettings } from '@/components/data-settings';
-import { TeamCard } from '@/components/team-card';
 import { Card } from '@/components/ui/card';
 import { HeaderRule } from '@/components/header-rule';
 
@@ -41,16 +40,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
 
   const settings = await getAppSettings(session.orgId);
   const infra = await infraStats();
-
-  const teamRows = await db.select({
-    id: schema.adminUsers.id,
-    email: schema.adminUsers.email,
-    name: schema.adminUsers.name,
-    role: schema.adminUsers.role,
-    active: schema.adminUsers.active,
-    lastLoginAt: schema.adminUsers.lastLoginAt,
-  }).from(schema.adminUsers).orderBy(asc(schema.adminUsers.createdAt));
-  const team = teamRows.map((u) => ({ ...u, lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null }));
 
   const [[totals], [last24h], [summaryStats], insightRows] = await Promise.all([
     db.select({
@@ -89,7 +78,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
   const SECTIONS = [
     ['recording', 'Recording'],
     ['ai', 'AI features'],
-    ['team', 'Team'],
     ['stats', 'Stats'],
     ['infra', 'Infra'],
   ] as const;
@@ -128,14 +116,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           What the LLM layer works on. Turning a stage off pauses new work; nothing already computed is lost.
         </p>
         <SettingsToggles initial={settings} />
-      </section>
-
-      <section id="team" className="scroll-mt-6">
-        <h2 className="font-semibold mb-2">Team</h2>
-        <p className="text-sm text-muted-foreground mb-2">
-          Who can sign in to this dashboard. Owners manage the team; members see everything else.
-        </p>
-        <TeamCard initialUsers={team} meId={session.userId} canManage={session.userRole === 'owner'} />
       </section>
 
       <section id="stats" className="scroll-mt-6">
