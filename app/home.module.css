@@ -236,11 +236,41 @@
   .heroCtas .ctaPrimary,
   .contactForm .ctaPrimary,
   .choiceCard .ctaPrimary,
-  .choiceCard .ctaGhost {
+  .choiceCard .ctaGhost,
+  .ctaRow .ctaPrimary,
+  .ctaRow .ctaSecondary {
     width: 100%;
     max-width: 22rem;
     justify-content: center;
   }
+}
+
+.ctaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+/* Secondary CTA on dark bands - quiet twin of the brass primary. */
+.ctaSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.6rem;
+  border-radius: 2px;
+  border: 1px solid var(--brass-dim);
+  color: var(--paper);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  white-space: nowrap;
+}
+.ctaSecondary:hover {
+  border-color: var(--brass);
+  background: rgb(176 141 87 / 0.08);
 }
 
 .ctaGhost {
@@ -532,7 +562,9 @@
    registration stays invite-only) ---------- */
 
 .contactBand {
-  background: var(--ink);
+  /* A step lighter than the closing band below it, so the two dark
+     sections read as separate rooms rather than one long block. */
+  background: oklch(0.21 0.008 75);
   color: var(--paper);
   border-top: 1px solid rgb(255 255 255 / 0.08);
 }
@@ -556,17 +588,6 @@
   flex-direction: column;
   gap: 1rem;
   text-align: left;
-}
-
-.contactRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-@media (max-width: 560px) {
-  .contactRow {
-    grid-template-columns: 1fr;
-  }
 }
 
 .contactInput {

@@ -57,30 +57,28 @@ export function ContactForm() {
 
   return (
     <form onSubmit={submit} className={styles.contactForm}>
-      <div className={styles.contactRow}>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          maxLength={120}
-          autoComplete="name"
-          placeholder="Name"
-          aria-label="Name"
-          className={styles.contactInput}
-        />
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          maxLength={200}
-          autoComplete="email"
-          placeholder="Email"
-          aria-label="Email"
-          className={styles.contactInput}
-        />
-      </div>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        required
+        maxLength={120}
+        autoComplete="name"
+        placeholder="Name"
+        aria-label="Name"
+        className={styles.contactInput}
+      />
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        maxLength={200}
+        autoComplete="email"
+        placeholder="Email"
+        aria-label="Email"
+        className={styles.contactInput}
+      />
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}

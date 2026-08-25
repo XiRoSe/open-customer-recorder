@@ -46,9 +46,14 @@ export default function Home() {
             <AskDemo />
 
             <div className={styles.heroCtas}>
-              <Link href="/login" className={styles.ctaPrimary}>
-                Open the lab <span aria-hidden>&rarr;</span>
-              </Link>
+              <div className={styles.ctaRow}>
+                <Link href="/login" className={styles.ctaPrimary}>
+                  Open the lab <span aria-hidden>&rarr;</span>
+                </Link>
+                <a href="#contact" className={styles.ctaSecondary}>
+                  Contact us
+                </a>
+              </div>
               <p className={`${styles.ctaNote} ${styles.mono}`}>Cloud or self-hosted · invite-only</p>
             </div>
           </div>
@@ -82,10 +87,21 @@ export default function Home() {
               <h3>We deploy it on yours</h3>
               <p>One container on your own infrastructure, set up with us. Sessions never leave your hands.</p>
               <a href="#contact" className={styles.ctaGhost}>
-                Talk to us <span aria-hidden>&rarr;</span>
+                Contact us <span aria-hidden>&rarr;</span>
               </a>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="contact" className={styles.contactBand} data-reveal>
+        <div className={styles.contactInner}>
+          <p className={styles.eyebrow}>Contact</p>
+          <h2 className={styles.h2}>Contact Us</h2>
+          <p className={styles.contactSub}>
+            We&rsquo;re onboarding a few teams at a time. Leave a note - we reply within a day.
+          </p>
+          <ContactForm />
         </div>
       </section>
 
@@ -99,20 +115,14 @@ export default function Home() {
               Sessions never leave your hands
             </p>
           </div>
-          <Link href="/login" className={styles.ctaPrimary}>
-            Open the lab <span aria-hidden>&rarr;</span>
-          </Link>
-        </div>
-      </section>
-
-      <section id="contact" className={styles.contactBand} data-reveal>
-        <div className={styles.contactInner}>
-          <p className={styles.eyebrow}>Contact</p>
-          <h2 className={styles.h2}>Want in?</h2>
-          <p className={styles.contactSub}>
-            We&rsquo;re onboarding a few teams at a time. Leave a note - we reply within a day.
-          </p>
-          <ContactForm />
+          <div className={styles.ctaRow}>
+            <Link href="/login" className={styles.ctaPrimary}>
+              Open the lab <span aria-hidden>&rarr;</span>
+            </Link>
+            <a href="#contact" className={styles.ctaSecondary}>
+              Contact us
+            </a>
+          </div>
         </div>
       </section>
 
