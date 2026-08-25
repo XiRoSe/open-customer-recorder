@@ -30,9 +30,9 @@ export default function Home() {
       <header className={styles.hero}>
         <div className={styles.topBar}>
           <span className={styles.wordmark}>{BRAND}</span>
-          <Link href="/login" className={styles.loginBtn}>
-            Log in <span aria-hidden>&rarr;</span>
-          </Link>
+          <a href="#contact" className={styles.loginBtn}>
+            Contact us <span aria-hidden>&rarr;</span>
+          </a>
         </div>
 
         <div className={styles.heroInner}>
@@ -78,9 +78,9 @@ export default function Home() {
               <span className={`${styles.choiceLabel} ${styles.mono}`}>Cloud</span>
               <h3>We host it</h3>
               <p>Sign up, paste one script tag, watch your first session come in minutes later.</p>
-              <Link href="/login" className={styles.ctaPrimary}>
+              <a href="#contact" className={styles.ctaPrimary}>
                 Start now <span aria-hidden>&rarr;</span>
-              </Link>
+              </a>
             </div>
             <div className={styles.choiceCard}>
               <span className={`${styles.choiceLabel} ${styles.mono}`}>Self-hosted</span>
@@ -115,14 +115,9 @@ export default function Home() {
               Sessions never leave your hands
             </p>
           </div>
-          <div className={styles.ctaRow}>
-            <Link href="/login" className={styles.ctaPrimary}>
-              Open the lab <span aria-hidden>&rarr;</span>
-            </Link>
-            <a href="#contact" className={styles.ctaSecondary}>
-              Contact us
-            </a>
-          </div>
+          <Link href="/login" className={styles.ctaPrimary}>
+            Open the lab <span aria-hidden>&rarr;</span>
+          </Link>
         </div>
       </section>
 
