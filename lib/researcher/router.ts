@@ -115,9 +115,14 @@ export function validatePlan(raw: unknown): ResearchPlan | null {
   if (steps.length === 0 && !fromHistory && intent !== 'smalltalk') steps.push(floorStep());
   // A tag draft outside a tag intent is model drift, and downstream it
   // hijacks the whole answer (the deterministic tag reply replaces the
-  // composer) — clamp it away regardless of what the prompt said.
+  // composer) — clamp it away regardless of what the prompt said. The
+  // mirror-image drift (intent "tag" with no valid draft) leaks an
+  // "Intent: tag" line into the composer, which then invents tagging
+  // talk — demote it to what the steps actually do.
+  let finalIntent = intent;
   if (intent !== 'tag') tagDraft = null;
-  return { intent, fromHistory, steps, tagDraft };
+  else if (!tagDraft) finalIntent = steps[0]?.tool === 'session_digest' ? 'session_detail' : 'followup';
+  return { intent: finalIntent, fromHistory, steps, tagDraft };
 }
 
 const RANGE_HINTS: [RegExp, string][] = [
