@@ -113,7 +113,9 @@ Each stage has its own toggle under **Settings → AI features**. Unset `LLM_SER
 1. The tracker records rrweb events and posts them to the ingest API; they're gzipped and stored inline in Postgres.
 2. A background sweep inside the app turns each ended session into a deterministic digest: the narrative and its frustration badges. No model involved, works retroactively.
 3. With `LLM_SERVICE_URL` set, workers send each digest (plus replay screenshots when Visual analysis is on) to the LLM service for the intent summary, then build visitor profiles from those summaries.
-4. With `REDIS_URL` set, that processing runs through BullMQ workers; without it an in-process loop does the same work. The database rows stay the source of truth either way.
+4. With `REDIS_URL` set, the queue carries deduped job signals and BullMQ workers (running inside the app, like everything else) pick them up; without Redis an in-process loop does the same work. Either way it's always the app that calls the LLM, and the database rows stay the source of truth - a reconciler re-derives any work Redis loses.
+
+Everything lives in one Postgres database: `sessions` holds the metadata and the gzipped rrweb event blob inline (no object store), `session_summaries` holds each session's digest, narrative, and AI summary - the row doubles as the work-queue entry with status/attempts/retry columns - and `user_profiles` does the same for visitor profiles. Around those: `tag_rules` + `session_tags`, `session_views` (per-admin viewed state), `excluded_anon_ids`, `admin_users`, and `app_settings` (the AI feature toggles). Sessions (with their replays and summaries) age out with per-project retention; visitor profiles are kept.
 
 The tracker's wire protocol is stable for drop-in script tags: `ps_anon_id` / `ps_session_v2` storage keys, `x-ps-end` header, `data-ps-mask` attribute, `window.PocketScience` global. The pre-rebrand `mega_*` names are still honored, so old embeds keep working (see `LEGACY_TRACKER_COMPAT`).
 
