@@ -14,9 +14,9 @@ DROP TABLE "researcher_threads" CASCADE;--> statement-breakpoint
 DROP TABLE "timeline_analyses" CASCADE;--> statement-breakpoint
 DROP TABLE "timeline_rollups" CASCADE;--> statement-breakpoint
 DROP TABLE "user_segments" CASCADE;--> statement-breakpoint
-ALTER TABLE "user_profiles" DROP CONSTRAINT "user_profiles_segment_id_user_segments_id_fk";
+ALTER TABLE "user_profiles" DROP CONSTRAINT IF EXISTS "user_profiles_segment_id_user_segments_id_fk";
 --> statement-breakpoint
-DROP INDEX "user_profiles_segment_idx";--> statement-breakpoint
+DROP INDEX IF EXISTS "user_profiles_segment_idx";--> statement-breakpoint
 ALTER TABLE "app_settings" DROP COLUMN "clustering_enabled";--> statement-breakpoint
 ALTER TABLE "user_profiles" DROP COLUMN "segment_id";--> statement-breakpoint
 ALTER TABLE "user_profiles" DROP COLUMN "map_x";--> statement-breakpoint
