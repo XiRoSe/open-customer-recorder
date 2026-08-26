@@ -1,6 +1,6 @@
 # PocketScience
 
-**Self-hosted session replay - a lightweight, source-available alternative to FullStory / OpenReplay. Free for personal and noncommercial use.**
+**Session replay on your own server: recordings, step-by-step narratives, self-hosted AI summaries, visitor profiles. Free for personal and noncommercial use.**
 
 Records real user sessions with [rrweb](https://github.com/rrweb-io/rrweb), stores them in your own Postgres, replays them from a built-in dashboard. One Next.js app - ingest and dashboard ship together, so it's cheap to run and the data never leaves your server.
 

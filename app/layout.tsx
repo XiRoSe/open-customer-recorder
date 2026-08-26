@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "PocketScience",
-  description: "Self-hosted session replay - a lightweight, source-available alternative to FullStory / OpenReplay.",
+  description: "Session replay on your own server: recordings, step-by-step narratives, self-hosted AI summaries, visitor profiles.",
 };
 
 export default function RootLayout({
