@@ -7,14 +7,14 @@ Turns session digests into 2-3 sentence intent summaries.
 1. New service in the same Railway project → deploy from this repo,
    **root directory `private-multimodel-llm-service/`**.
 2. No public domain. Note the private host, e.g. `summarizer.railway.internal`.
-3. Enable **App Sleeping** on the service — the main app's worker wakes it
+3. Enable **App Sleeping** on the service - the main app's worker wakes it
    in one burst per cycle; you pay only for active minutes.
 4. Resources: ~4 GB RAM, 2+ vCPU. Expect 15-30 s per summary.
 5. On the main app service set:
    - `LLM_SERVICE_URL=http://summarizer.railway.internal:8080`
    - `SUMMARIZER_MODEL_LABEL=qwen3.5-4b-q4km`
 
-Unset `LLM_SERVICE_URL` to turn the LLM layer off — narratives and insight
+Unset `LLM_SERVICE_URL` to turn the LLM layer off - narratives and insight
 badges keep working without it.
 
 ## Local smoke test

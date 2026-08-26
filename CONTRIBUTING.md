@@ -27,11 +27,11 @@ npm run build     # production build + type-check
   isn't set, so set it locally to run the full suite.
 - **Scope:** keep PRs focused. Unrelated refactors are harder to review.
 - **The tracker wire protocol** (header/storage names, the `ps_*` identifiers,
-  the `PocketScience` global) is a compatibility surface — don't rename these
+  the `PocketScience` global) is a compatibility surface - don't rename these
   without a clear migration story, since deployed trackers depend on them.
   When this was rebranded from `mega_*`/`MegaRecorder`, the pre-rebrand names
   stayed supported as aliases/fallbacks (see the README's wire protocol
-  section) rather than being dropped outright — follow that pattern for any
+  section) rather than being dropped outright - follow that pattern for any
   future rename too.
 
 ## Commit messages
@@ -54,7 +54,7 @@ docs: clarify privacy modes in the README
 ## Reporting bugs & requesting features
 
 Use the GitHub issue templates. For security issues, **do not** open a public
-issue — see [SECURITY.md](SECURITY.md).
+issue - see [SECURITY.md](SECURITY.md).
 
 By contributing, you agree that your contributions are licensed under the
 project's [PolyForm Noncommercial License 1.0.0](LICENSE).
