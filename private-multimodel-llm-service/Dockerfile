@@ -1,7 +1,8 @@
-# Summarizer sidecar: llama.cpp server + Qwen3.5-4B (Q4_K_M).
-# Deployed as its own Railway service (root directory: summarizer/), no
-# public domain — the app reaches it over private networking. Enable app
-# sleeping: the worker wakes it in bursts, so idle hours cost nothing.
+# LLM sidecar: llama.cpp server + Qwen3.5-4B (Q4_K_M) with a vision
+# adapter. Deployed as its own Railway service (root directory:
+# private-multimodel-llm-service/), no public domain - the app reaches it
+# over private networking. Enable app sleeping: the worker wakes it in
+# bursts, so idle hours cost nothing.
 FROM ghcr.io/ggml-org/llama.cpp:server
 
 # Model is baked into the image so cold starts don't re-download ~2.7 GB.
@@ -11,12 +12,11 @@ ADD https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_
 # parts in /v1/chat/completions).
 ADD https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf /models/mmproj.gguf
 
-# THINK_BUDGET=0 / REASONING=off disable Qwen3.5's thinking mode — without
+# THINK_BUDGET=0 / REASONING=off disable Qwen3.5's thinking mode - without
 # them, all max_tokens go to reasoning_content and message.content is empty.
 # (Two names because llama.cpp renamed the env var across versions.)
 # PARALLEL=2 + CTX 8192: two lanes of 4096 each (llama.cpp SPLITS ctx
-# across slots!) — one lane for background summaries, one reserved for
-# the Researcher so a question never waits behind a vision job.
+# across slots!) - so a text job never waits behind a slow vision job.
 ENV LLAMA_ARG_HOST=0.0.0.0 \
     LLAMA_ARG_PORT=8080 \
     LLAMA_ARG_MODEL=/models/model.gguf \

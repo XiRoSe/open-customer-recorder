@@ -14,7 +14,7 @@ Records real user sessions with [rrweb](https://github.com/rrweb-io/rrweb), stor
 
 - **Session replay** - live URL bar that follows the visitor across pages, speed controls, skip-inactive, one-click MP4 export.
 - **Session narratives** - every session becomes a step-by-step story ("Landed on /home → clicked 'Pricing' → typed in the email field") with frustration badges: 🔥 rage clicks, 💀 dead clicks, 📝 abandoned forms, 🔁 pogo-sticking. Deterministic - no AI required.
-- **AI layer, optional and self-hosted** - per-session intent summaries and rolling visitor profiles via the bundled [LLM service](#the-ai-layer-optional). Nothing goes to any third party.
+- **AI layer, optional and self-hosted** - per-session intent summaries (with the model reading replay screenshots, not just text) and rolling visitor profiles, via the bundled [LLM service](#the-ai-layer-optional). Nothing goes to any third party.
 - **Users** - sessions aggregated per visitor, with their AI profile when the LLM layer is on.
 - **Tag rules** - auto-tag sessions by URL match or visit count, each rule with its own color, applied retroactively too.
 - **Controls** - privacy masking, exclude your own team from recording, per-admin viewed tracking, sortable tables, retention and session caps.
@@ -59,10 +59,16 @@ Sessions show up within a few seconds. `window.PocketScience` exposes `identify(
 
 Narratives work out of the box, no model needed. The LLM extras run on your own hardware:
 
-1. Deploy the bundled [`private-multimodel-llm-service/`](private-multimodel-llm-service/README.md) - llama.cpp serving Qwen3.5-4B behind an OpenAI-compatible API (any OpenAI-compatible endpoint works too).
+1. Deploy the bundled [`private-multimodel-llm-service/`](private-multimodel-llm-service/README.md) - llama.cpp serving Qwen3.5-4B (Q4_K_M) with a vision adapter, behind an OpenAI-compatible API. The model is baked into the image; any OpenAI-compatible endpoint works too.
 2. Set `LLM_SERVICE_URL` on the app.
 
-That turns on **intent summaries** (a 2-3 sentence read per session: what the visitor wanted, where they got stuck) and **visitor profiles** (a rolling "who is this and what do they keep trying to do", once a visitor has 2+ summarized sessions). Each stage has a toggle under **Settings → AI features**; unset the URL and everything AI pauses while narratives keep working.
+What turns on:
+
+- **Intent summaries** - a 2-3 sentence read per session: what the visitor wanted, where they got stuck.
+- **Visual analysis** - the summary call also attaches up to two replay screenshots (the first friction moment and the last thing the visitor saw), rendered headlessly and read by the same model through its vision adapter.
+- **Visitor profiles** - once a visitor has 2+ summarized sessions: who they are, what they keep trying to do, where they come from, and how their visits are going - shown on the Users page.
+
+Each stage has its own toggle under **Settings → AI features**. Unset `LLM_SERVICE_URL` and the AI layer pauses; narratives keep working. Session data never leaves your infrastructure either way.
 
 ## Screenshots
 
@@ -85,18 +91,29 @@ That turns on **intent summaries** (a 2-3 sentence read per session: what the vi
 ## How it works
 
 ```
- ┌────────────┐   tracker.js (rrweb)   ┌─────────────────────────────┐
- │ Your site  │ ─────────────────────► │  PocketScience               │
- │  + <script>│   POST /api/ingest/... │  (Next.js: ingest + admin)   │
- └────────────┘                        │                              │
-                                       │   ┌──────────────────────┐   │
-        Admin dashboard  ◄──────────── │   │ Postgres (events,    │   │
-        /projects, /sessions/[id]      │   │ gzipped blobs inline)│   │
-                                       │   └──────────────────────┘   │
-                                       └─────────────────────────────┘
+ ┌────────────┐  tracker.js (rrweb)  ┌───────────────────────────────────┐
+ │ Your site  │ ───────────────────► │  PocketScience (one Next.js app)  │
+ │  + <script>│  POST /api/ingest/…  │                                   │
+ └────────────┘                      │  ingest API ──► Postgres          │
+                                     │  (events gzipped inline, no       │
+   Admin dashboard  ◄──────────────  │   object store or volume)         │
+   replay · narratives · users       │                                   │
+                                     │  background workers:              │
+                                     │  digest ► narrative ► AI summary  │
+                                     └───────────────┬───────────────────┘
+                                            optional │ OpenAI-compatible
+                                     ┌───────────────▼───────────────────┐
+                                     │  private-multimodel-llm-service   │
+                                     │  llama.cpp · Qwen3.5-4B + vision  │
+                                     └───────────────────────────────────┘
 ```
 
-Events are gzipped and stored inline in Postgres - no object store or volume needed. The tracker's wire protocol is stable for drop-in script tags: `ps_anon_id` / `ps_session_v2` storage keys, `x-ps-end` header, `data-ps-mask` attribute, `window.PocketScience` global. The pre-rebrand `mega_*` names are still honored, so old embeds keep working (see `LEGACY_TRACKER_COMPAT`).
+1. The tracker records rrweb events and posts them to the ingest API; they're gzipped and stored inline in Postgres.
+2. A background sweep inside the app turns each ended session into a deterministic digest: the narrative and its frustration badges. No model involved, works retroactively.
+3. With `LLM_SERVICE_URL` set, workers send each digest (plus replay screenshots when Visual analysis is on) to the LLM service for the intent summary, then build visitor profiles from those summaries.
+4. With `REDIS_URL` set, that processing runs through BullMQ workers; without it an in-process loop does the same work. The database rows stay the source of truth either way.
+
+The tracker's wire protocol is stable for drop-in script tags: `ps_anon_id` / `ps_session_v2` storage keys, `x-ps-end` header, `data-ps-mask` attribute, `window.PocketScience` global. The pre-rebrand `mega_*` names are still honored, so old embeds keep working (see `LEGACY_TRACKER_COMPAT`).
 
 ## Configuration
 
@@ -108,11 +125,9 @@ Events are gzipped and stored inline in Postgres - no object store or volume nee
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | ✅* | Single admin login, seeded on boot. |
 | `ADMINS_CREDS` | ✅* | JSON array of `{ "email", "password" }` for multiple admins. |
 | `LLM_SERVICE_URL` | - | OpenAI-compatible endpoint for the [AI layer](#the-ai-layer-optional). Unset = AI off. `SUMMARIZER_URL` works as a legacy alias. |
-| `SUMMARIZER_MODEL_LABEL` | - | Label stored with each AI summary (e.g. `qwen3.5-4b-q4km`). |
+| `LLM_SERVICE_MODEL_LABEL` | - | Label stored with each AI summary (e.g. `qwen3.5-4b-q4km`). `SUMMARIZER_MODEL_LABEL` works as a legacy alias. |
 | `REDIS_URL` | - | Optional. Moves AI processing onto BullMQ workers; without it an in-process loop does the same work. |
 | `ORG_NAME` | - | Name for the auto-created org/project (default `My Company`). |
-| `BLOB_DIR` | - | Blob directory when not storing inline in the DB. |
-| `APP_ORIGIN` | - | Public origin of the app (cookies etc). |
 | `LEGACY_TRACKER_COMPAT` | - | Keep honoring the pre-rebrand `x-mega-end` header (default `true`). |
 
 \* Provide **either** `ADMIN_EMAIL`+`ADMIN_PASSWORD` **or** `ADMINS_CREDS`. Generate secrets with `openssl rand -base64 32`.
