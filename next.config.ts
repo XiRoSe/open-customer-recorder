@@ -4,11 +4,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // playwright-core has runtime-loaded JSON (browsers.json) and native
   // bindings that Next's output tracer can't statically discover, so it
-  // ships an incomplete copy. Same for @huggingface/transformers, whose
-  // onnxruntime-node dependency carries native binaries. Mark them
-  // external so they're required from node_modules at runtime.
+  // ships an incomplete copy. Mark it external so it's required from
+  // node_modules at runtime (see the matching Dockerfile COPY).
   // bullmq/ioredis ship runtime-loaded Lua scripts the tracer misses.
-  serverExternalPackages: ['playwright-core', '@huggingface/transformers', 'bullmq', 'ioredis'],
+  serverExternalPackages: ['playwright-core', 'bullmq', 'ioredis'],
   async headers() {
     return [
       {
