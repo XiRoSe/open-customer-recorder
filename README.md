@@ -100,12 +100,14 @@ Each stage has its own toggle under **Settings → AI features**. Unset `LLM_SER
    replay · narratives · users       │                                   │
                                      │  background workers:              │
                                      │  digest ► narrative ► AI summary  │
-                                     └───────────────┬───────────────────┘
-                                            optional │ OpenAI-compatible
-                                     ┌───────────────▼───────────────────┐
-                                     │  private-multimodel-llm-service   │
-                                     │  llama.cpp · Qwen3.5-4B + vision  │
-                                     └───────────────────────────────────┘
+                                     │  summaries ► visitor profiles     │
+                                     └──────┬─────────────────────┬──────┘
+                       (optional) job queue │          (optional) │ OpenAI-compatible
+                        ┌───────────────────▼┐  ┌─────────────────▼──────────┐
+                        │ Redis + BullMQ     │  │ private-multimodel-llm-    │
+                        │ summaries·profiles │  │ service: llama.cpp with    │
+                        │ (else in-process)  │  │ Qwen3.5-4B + vision adapter│
+                        └────────────────────┘  └────────────────────────────┘
 ```
 
 1. The tracker records rrweb events and posts them to the ingest API; they're gzipped and stored inline in Postgres.
