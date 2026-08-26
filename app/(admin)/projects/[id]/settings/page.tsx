@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db, schema } from '@/lib/db';
-import { sql, count, avg, sum, gt, and, eq, asc } from 'drizzle-orm';
+import { sql, count, avg, sum, gt, and, eq } from 'drizzle-orm';
 import { readSessionCookie } from '@/lib/auth';
 import { getAppSettings } from '@/lib/app-settings';
 import { infraStats } from '@/lib/infra-stats';
 import { SettingsToggles } from '@/components/settings-toggles';
 import { DataSettings } from '@/components/data-settings';
-import { TeamCard } from '@/components/team-card';
 import { Card } from '@/components/ui/card';
 import { HeaderRule } from '@/components/header-rule';
 
@@ -41,16 +40,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
 
   const settings = await getAppSettings(session.orgId);
   const infra = await infraStats();
-
-  const teamRows = await db.select({
-    id: schema.adminUsers.id,
-    email: schema.adminUsers.email,
-    name: schema.adminUsers.name,
-    role: schema.adminUsers.role,
-    active: schema.adminUsers.active,
-    lastLoginAt: schema.adminUsers.lastLoginAt,
-  }).from(schema.adminUsers).orderBy(asc(schema.adminUsers.createdAt));
-  const team = teamRows.map((u) => ({ ...u, lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null }));
 
   const [[totals], [last24h], [summaryStats], insightRows] = await Promise.all([
     db.select({
@@ -89,7 +78,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
   const SECTIONS = [
     ['recording', 'Recording'],
     ['ai', 'AI features'],
-    ['team', 'Team'],
     ['stats', 'Stats'],
     ['infra', 'Infra'],
   ] as const;
@@ -113,7 +101,7 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
       <section id="recording" className="scroll-mt-6">
         <h2 className="font-semibold mb-2">Recording &amp; data</h2>
         <p className="text-sm text-muted-foreground mb-2">
-          Replays age out with retention; timeline history, profiles, and segments are kept.
+          Replays age out with retention; profiles are kept.
         </p>
         <DataSettings
           projectId={project.id}
@@ -128,14 +116,6 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
           What the LLM layer works on. Turning a stage off pauses new work; nothing already computed is lost.
         </p>
         <SettingsToggles initial={settings} />
-      </section>
-
-      <section id="team" className="scroll-mt-6">
-        <h2 className="font-semibold mb-2">Team</h2>
-        <p className="text-sm text-muted-foreground mb-2">
-          Who can sign in to this dashboard. Owners manage the team; members see everything else.
-        </p>
-        <TeamCard initialUsers={team} meId={session.userId} canManage={session.userRole === 'owner'} />
       </section>
 
       <section id="stats" className="scroll-mt-6">
@@ -194,37 +174,9 @@ export default async function ProjectSettingsPage(props: { params: Promise<{ id:
               </div>
             )}
           </Card>
-          <Card className="p-4" title="Pre-aggregated hourly timeline rollups. The freshest hour should track the current hour once backfill completes.">
-            <div className="text-2xl font-semibold tabular-nums">{infra.rollups.count.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground">Timeline rollup hours</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {infra.rollups.freshestHour
-                ? `fresh to ${infra.rollups.freshestHour.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC`
-                : 'not built yet'}
-            </div>
-          </Card>
           <Card className="p-4" title="Live /health check of the private multimodel LLM service (LLM_SERVICE_URL).">
             <div className={`text-2xl font-semibold ${infra.llm === 'unreachable' ? 'text-rose-600' : ''}`}>{infra.llm}</div>
             <div className="text-sm text-muted-foreground">LLM service</div>
-          </Card>
-          <Card className="p-4" title="Researcher questions answered in the last 24 hours, with the median end-to-end research time (routing + queries + composing).">
-            <div className="text-2xl font-semibold tabular-nums">{infra.researcher.questions24h.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground">Researcher questions (24h)</div>
-            {infra.researcher.medianRunMs !== null && (
-              <div className="text-xs text-muted-foreground mt-1 tabular-nums">median {fmtDuration(infra.researcher.medianRunMs)} per answer</div>
-            )}
-          </Card>
-          <Card className="p-4" title="Live workers holding the clustering queue — the standalone cluster service. 0 means it is down or disconnected from Redis.">
-            <div className={`text-2xl font-semibold ${infra.clusterWorkers === 0 ? 'text-rose-600' : ''}`}>
-              {infra.clusterWorkers === null ? '—' : infra.clusterWorkers > 0 ? 'connected' : 'no worker'}
-            </div>
-            <div className="text-sm text-muted-foreground">Cluster service</div>
-            {infra.clusterWorkers !== null && infra.clusterWorkers > 0 && (
-              <div className="text-xs text-muted-foreground mt-1 tabular-nums">{infra.clusterWorkers} worker{infra.clusterWorkers === 1 ? '' : 's'} on the clustering queue</div>
-            )}
-            {infra.clusterWorkers === null && (
-              <div className="text-xs text-muted-foreground mt-1">runs in-process without Redis</div>
-            )}
           </Card>
         </div>
       </section>

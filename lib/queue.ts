@@ -6,7 +6,7 @@
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 
-export const QUEUE_NAMES = ['summaries', 'profiles', 'clustering', 'aggregation'] as const;
+export const QUEUE_NAMES = ['summaries', 'profiles'] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 export function queuesEnabled(): boolean {
@@ -38,7 +38,7 @@ export function getQueue(name: QueueName): Queue | null {
         // Jobs must vanish on completion: a finished job's id lingering
         // in the completed/failed sets makes BullMQ silently ignore the
         // next add with the same jobId — which would break DB-driven
-        // retries and the recurring rollup refresh. The DB is the trail.
+        // retries. The DB is the trail.
         removeOnComplete: true,
         removeOnFail: true,
       },

@@ -32,7 +32,7 @@ import { countryFromHeaders } from '@/lib/geoip';
 import { splitAtCap, cappedDurationMs } from '@/lib/session-cap';
 import { hrefOf, type RawEvent } from '@/lib/url-timeline';
 import { matchesSessionCount, matchingUrlContainsRules, matchingCreationRules, matchingDurationRules, tagSession } from '@/lib/tag-rules';
-import { deviceOf } from '@/lib/timeline';
+import { deviceOf } from '@/lib/device';
 import { categorizeSource } from '@/lib/traffic-source';
 import { isExcluded } from '@/lib/excluded-users';
 

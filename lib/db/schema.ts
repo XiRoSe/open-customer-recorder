@@ -150,7 +150,7 @@ export const sessionSummaries = pgTable('session_summaries', {
   digestVersion: integer('digest_version').notNull(),
   narrative: text('narrative').notNull(),
   insights: jsonb('insights').notNull(),
-  // Denormalized from digest.stats.clickCount at sweep time so timeline
+  // Denormalized from digest.stats.clickCount at sweep time so aggregate
   // reads never detoast the digest jsonb per row.
   clicks: integer('clicks').notNull().default(0),
   intentText: text('intent_text'),
@@ -168,7 +168,7 @@ export const sessionSummaries = pgTable('session_summaries', {
 }));
 
 // Admin feature toggles, one row per org (single-org product today).
-// Missing row = all defaults (everything enabled). SUMMARIZER_URL unset
+// Missing row = all defaults (everything enabled). LLM_SERVICE_URL unset
 // still hard-disables the LLM layer regardless of these flags.
 export const appSettings = pgTable('app_settings', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -177,7 +177,6 @@ export const appSettings = pgTable('app_settings', {
   intentEnabled: boolean('intent_enabled').notNull().default(true),
   visualEnabled: boolean('visual_enabled').notNull().default(true),
   profilesEnabled: boolean('profiles_enabled').notNull().default(true),
-  clusteringEnabled: boolean('clustering_enabled').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -196,11 +195,6 @@ export const userProfiles = pgTable('user_profiles', {
   // call: { persona, intent, source, experience } — each a one-sentence
   // string. Null for profiles generated before facets existed.
   facets: jsonb('facets'),
-  segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
-  // 2D PCA projection of the profile embedding, set at clustering time —
-  // drives the cluster map without re-embedding on page load.
-  mapX: doublePrecision('map_x'),
-  mapY: doublePrecision('map_y'),
   sessionsSummarized: integer('sessions_summarized').notNull().default(0),
   status: text('status').notNull().default('pending'), // pending | processing | done | failed
   attempts: integer('attempts').notNull().default(0),
@@ -210,153 +204,4 @@ export const userProfiles = pgTable('user_profiles', {
 }, (t) => ({
   projectVisitorIdx: uniqueIndex('user_profiles_project_visitor_idx').on(t.projectId, t.visitorKey),
   statusIdx: index('user_profiles_status_idx').on(t.status, t.nextRetryAt),
-  // Every clustering run deletes segments wholesale; SET NULL needs this
-  // to avoid a seq scan per deleted segment.
-  segmentIdx: index('user_profiles_segment_idx').on(t.segmentId),
 }));
-
-// Behavioral segments discovered by clustering visitor-profile embeddings
-// (k-means over MiniLM vectors, k picked by silhouette; named by the
-// summarizer LLM). Rebuilt whenever profiles change — each run replaces
-// the project's segments wholesale, so rows are cheap and disposable.
-export const userSegments = pgTable('user_segments', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  // Which research dimension this segment belongs to:
-  // 'overall' | 'persona' | 'intent' | 'source' | 'experience'.
-  dimension: text('dimension').notNull().default('overall'),
-  name: text('name').notNull(),
-  description: text('description').notNull().default(''),
-  // Analyst paragraph beyond the one-line description: what unites the
-  // group, why it matters, what to do about it.
-  analysis: text('analysis').notNull().default(''),
-  size: integer('size').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  projectIdx: index('user_segments_project_idx').on(t.projectId, t.dimension),
-}));
-
-// Per-dimension position + segment assignment for each profile — one row
-// per (profile, dimension). The 'overall' dimension stays on
-// user_profiles.segmentId/mapX/mapY.
-export const profileDimensionPoints = pgTable('profile_dimension_points', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  profileId: uuid('profile_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
-  dimension: text('dimension').notNull(),
-  segmentId: uuid('segment_id').references(() => userSegments.id, { onDelete: 'set null' }),
-  x: doublePrecision('x').notNull(),
-  y: doublePrecision('y').notNull(),
-}, (t) => ({
-  profileDimIdx: uniqueIndex('profile_dimension_points_profile_dim_idx').on(t.profileId, t.dimension),
-  // Same SET NULL cascade as user_profiles.segment_id.
-  segmentIdx: index('profile_dimension_points_segment_idx').on(t.segmentId),
-}));
-
-// Batch-level analyst read per dimension ("what Source reveals about
-// this cohort"), refreshed on every clustering run.
-export const dimensionAnalyses = pgTable('dimension_analyses', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  dimension: text('dimension').notNull(),
-  analysis: text('analysis').notNull().default(''),
-  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  projectDimIdx: uniqueIndex('dimension_analyses_project_dim_idx').on(t.projectId, t.dimension),
-}));
-
-// Pre-aggregated hourly session metrics per project, built by queued,
-// idempotent jobs (recompute-the-hour from raw rows). The unbounded
-// 'all' timeline range reads these instead of scanning every session;
-// hot ranges (24h/7d/30d) stay raw for exactness. A zero-session hour
-// still gets a row — that's how read-side coverage is proven.
-export const timelineRollups = pgTable('timeline_rollups', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  hourStart: timestamp('hour_start', { withTimezone: true }).notNull(),
-  sessions: integer('sessions').notNull().default(0),
-  engaged: integer('engaged').notNull().default(0),
-  engagedNew: integer('engaged_new').notNull().default(0),
-  frustrated: integer('frustrated').notNull().default(0),
-  // Sessions that are their visitor's first ever — summing these over a
-  // window that starts at the project's first session equals distinct
-  // new visitors in that window.
-  newVisitorSessions: integer('new_visitor_sessions').notNull().default(0),
-  durationSumMs: bigint('duration_sum_ms', { mode: 'number' }).notNull().default(0),
-  clicks: integer('clicks').notNull().default(0),
-  tagged: integer('tagged').notNull().default(0),
-  bySource: jsonb('by_source').notNull().default({}),
-  clicksByDevice: jsonb('clicks_by_device').notNull().default({}),
-  frictionByKind: jsonb('friction_by_kind').notNull().default({}),
-  byTag: jsonb('by_tag').notNull().default({}),
-  byDevice: jsonb('by_device').notNull().default({}),
-  byBrowser: jsonb('by_browser').notNull().default({}),
-  byCountry: jsonb('by_country').notNull().default({}),
-  byReferrerHost: jsonb('by_referrer_host').notNull().default({}),
-  byEntryPath: jsonb('by_entry_path').notNull().default({}),
-  // {path: {n, bad}} — powers the Overview's worst-friction-entry callout.
-  byEntryFriction: jsonb('by_entry_friction').notNull().default({}),
-  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  projectHourIdx: uniqueIndex('timeline_rollups_project_hour_idx').on(t.projectId, t.hourStart),
-}));
-
-// Researcher conversations, one per (admin, project, conversation). The
-// title comes from the first question (trimmed to a few words) and
-// powers the History view; lastMessageAt orders it.
-export const researcherThreads = pgTable('researcher_threads', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => adminUsers.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  // Set when the owner shares a read-only link (workspace's Share
-  // button); null = not shared. The token itself is the capability —
-  // the public share page needs no auth, just a matching row.
-  shareToken: text('share_token').unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  userProjectIdx: index('researcher_threads_user_project_idx').on(t.userId, t.projectId, t.lastMessageAt),
-  shareTokenIdx: index('researcher_threads_share_token_idx').on(t.shareToken),
-}));
-
-// One row per turn half. Assistant rows carry the full render payload
-// (blocks, footprints, citations, caveat, follow-ups) as jsonb so History
-// recall replays instantly without re-running anything.
-export const researcherMessages = pgTable('researcher_messages', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  threadId: uuid('thread_id').notNull().references(() => researcherThreads.id, { onDelete: 'cascade' }),
-  role: text('role').notNull(), // 'user' | 'assistant'
-  content: text('content').notNull(),
-  payload: jsonb('payload'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  threadIdx: index('researcher_messages_thread_idx').on(t.threadId, t.createdAt),
-}));
-
-// Cached analyst read of the timeline window per range (24h / 7d / 30d),
-// refreshed by a background cycle — never generated at page-view time.
-export const timelineAnalyses = pgTable('timeline_analyses', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  rangeKey: text('range_key').notNull(),
-  analysis: text('analysis').notNull().default(''),
-  patterns: jsonb('patterns'),
-  builtAt: timestamp('built_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  projectRangeIdx: uniqueIndex('timeline_analyses_project_range_idx').on(t.projectId, t.rangeKey),
-}));
-
-
-// Leads from the public homepage reach-out form — registration is
-// invite-only, so this is the front door. Always stored here first;
-// the email notification (see app/api/contact/route.ts) is best-effort
-// on top, so a mail-provider hiccup can never lose a lead.
-export const leads = pgTable('leads', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
-  message: text('message').notNull(),
-  /** Whether the notification email actually went out. */
-  notified: boolean('notified').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});

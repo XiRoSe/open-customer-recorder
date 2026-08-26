@@ -118,9 +118,9 @@ export async function authenticateAdmin(email: string, password: string): Promis
 }
 
 // The session token identifies the admin three ways: `email` keys
-// viewed-state tracking (predates the users table), `userId` keys
-// Researcher threads, `userRole` gates Team mutations. All are required:
-// tokens minted before users management lack them and must fail
+// viewed-state tracking (predates the users table), `userId` is the
+// admin_users row, `userRole` is owner/member. All are required:
+// tokens minted before the users table lack them and must fail
 // verification so those admins re-login and get the full payload.
 export interface SessionJwt {
   role: 'admin';

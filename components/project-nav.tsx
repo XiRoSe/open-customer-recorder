@@ -4,11 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const TABS = [
-  ['overview', 'Overview'],
   ['sessions', 'Sessions'],
-  ['timeline', 'Timeline'],
   ['users', 'Users'],
-  ['clusters', 'Clusters'],
   ['tags', 'Tags'],
   ['settings', 'Settings'],
 ] as const;
@@ -18,7 +15,7 @@ const TABS = [
  * nothing outside a project's section pages. */
 export function ProjectNav() {
   const pathname = usePathname();
-  const m = pathname?.match(/^\/projects\/([^/]+)\/(overview|sessions|timeline|users|clusters|tags|settings)/);
+  const m = pathname?.match(/^\/projects\/([^/]+)\/(sessions|users|tags|settings)/);
   if (!m) return null;
   const [, id, active] = m;
   return (

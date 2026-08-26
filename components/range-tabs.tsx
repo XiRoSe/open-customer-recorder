@@ -21,8 +21,7 @@ export const DEFAULT_RANGE = '24h';
 export function resolveRange(value: string | undefined) {
   const fixed = RANGES.find((r) => r.value === value);
   if (fixed) return fixed;
-  // Flexible custom windows ("2d", "36h") — deep links from the
-  // Researcher use these when a question names an exact window.
+  // Flexible custom windows ("2d", "36h") from deep links.
   const m = value?.match(/^(\d{1,2})([dh])$/);
   if (m) {
     const n = Math.max(1, parseInt(m[1], 10));

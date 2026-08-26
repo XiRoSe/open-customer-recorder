@@ -10,7 +10,7 @@ import { db, schema } from '@/lib/db';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import { gunzipSync } from 'node:zlib';
 import { hrefOf, type RawEvent } from '@/lib/url-timeline';
-import { deviceOf } from '@/lib/timeline';
+import { deviceOf } from '@/lib/device';
 import { categorizeSource } from '@/lib/traffic-source';
 import { matchesUrlContains, matchesDeviceIs, matchesSourceIs, type TagRule } from '@/lib/tag-rule-kinds';
 
@@ -32,15 +32,7 @@ export async function tagSession(sessionId: string, ruleIds: string[]): Promise<
  * sessions aren't blind to what changed.
  */
 export async function applyRuleToExistingSessions(rule: TagRule): Promise<number> {
-  const matched = await applyRuleInner(rule);
-  if (matched > 0) {
-    // Retroactive tagging mutates history — stale rollup hours must be
-    // rebuilt or the all-time tag counts silently disagree with raw.
-    const { invalidateRollups } = await import('./rollups');
-    await invalidateRollups(rule.projectId).catch((e) =>
-      console.warn('[tag-rules] rollup invalidation failed', e instanceof Error ? e.message : e));
-  }
-  return matched;
+  return applyRuleInner(rule);
 }
 
 function rowCount(result: unknown): number {
